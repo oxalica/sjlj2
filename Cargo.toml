@@ -6,7 +6,12 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
+criterion = "0.5.1"
 pprof = { version = "0.14.0", default-features = false }
+
+[[bench]]
+name = "bench"
+harness = false
 
 [profile.release]
 debug = "line-tables-only"
