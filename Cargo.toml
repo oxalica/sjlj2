@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+[dev-dependencies]
+pprof = { version = "0.14.0", default-features = false }
+
+[profile.release]
+debug = "line-tables-only"

@@ -127,21 +127,34 @@ mod imp {
             core::arch::asm!(
                 "lea rsi, [rip + 2f]",
                 "push rdi", // arg (align)
+                ".cfi_adjust_cfa_offset 8",
                 "push rbx",
+                ".cfi_adjust_cfa_offset 8",
                 "push rbp",
+                ".cfi_adjust_cfa_offset 8",
                 "push rsi",
+                ".cfi_adjust_cfa_offset 8",
                 "mov rsi, rsp",
                 "call {f}",
                 "add rsp, 32",
+                ".cfi_adjust_cfa_offset -32",
                 "xor esi, esi",
                 "jmp 3f",
                 "2:",
                 // Long jump lander.
+                ".cfi_adjust_cfa_offset 32",
+                ".cfi_remember_state",
+                ".cfi_def_cfa_register rax",
                 "mov rsp, rax",
+                ".cfi_restore_state",
                 "pop rax", // lander rip
+                ".cfi_adjust_cfa_offset -8",
                 "pop rbp",
+                ".cfi_adjust_cfa_offset -8",
                 "pop rbx",
+                ".cfi_adjust_cfa_offset -8",
                 "pop rdi", // arg (align)
+                ".cfi_adjust_cfa_offset -8",
                 "3:",
 
                 f = in(reg) f,
