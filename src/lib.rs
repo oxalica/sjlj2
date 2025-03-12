@@ -29,7 +29,12 @@ use core::num::NonZero;
 #[path = "./x86_64.rs"]
 mod imp;
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
+#[macro_use]
+#[path = "./x86.rs"]
+mod imp;
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
 #[macro_use]
 mod imp {
     use super::*;
