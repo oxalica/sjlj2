@@ -17,10 +17,37 @@
 //! - Minimal memory and performance footprint.
 //!
 //!   Single `usize` state. Let optimizer save only necessary states rather than bulk saving.
+#![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
+#![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
 use core::num::NonZero;
+
+#[cfg(target_arch = "x86_64")]
+#[macro_use]
+#[path = "./x86_64.rs"]
+mod imp;
+
+#[cfg(not(target_arch = "x86_64"))]
+#[macro_use]
+mod imp {
+    use super::*;
+
+    compile_error!("sjlj2: unsupported platform");
+
+    pub type Buf = [usize; 0];
+
+    macro_rules! set_jump_raw {
+        ($val:tt, $($tt:tt)*) => {
+            $val = 0 as _
+        };
+    }
+
+    pub(crate) unsafe fn long_jump_raw(_buf: *mut (), _result: NonZero<usize>) -> ! {
+        unimplemented!()
+    }
+}
 
 /// A jump checkpoint that you can go back to at any time.
 ///
@@ -73,24 +100,25 @@ where
     F: FnOnce(JumpPoint<'_>) -> T,
     G: FnOnce(NonZero<usize>) -> T,
 {
-    union Arg<T, F> {
-        f: ManuallyDrop<F>,
-        ret: ManuallyDrop<T>,
+    let mut buf = <MaybeUninit<imp::Buf>>::uninit();
+    let ptr = buf.as_mut_ptr();
+    let mut val: usize;
+
+    #[cfg(feature = "unstable-asm-goto")]
+    unsafe {
+        set_jump_raw!(val, ptr, {
+            unsafe { return lander(NonZero::new_unchecked(val)) }
+        });
+        ordinary(JumpPoint::from_raw(ptr.cast()))
     }
 
-    extern "C" fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(arg: *mut (), sp: *mut ()) {
-        let arg = unsafe { &mut *arg.cast::<Arg<T, F>>() };
-        let ret = unsafe { ManuallyDrop::take(&mut arg.f)(JumpPoint::from_raw(sp)) };
-        arg.ret = ManuallyDrop::new(ret);
-    }
-
-    let mut arg = Arg::<T, F> {
-        f: ManuallyDrop::new(ordinary),
-    };
-    let ret = unsafe { imp::set_jump_raw(wrap::<T, F>, (&raw mut arg).cast()) };
-    match NonZero::new(ret) {
-        None => unsafe { ManuallyDrop::take(&mut arg.ret) },
-        Some(ret) => lander(ret),
+    #[cfg(not(feature = "unstable-asm-goto"))]
+    unsafe {
+        set_jump_raw!(val, ptr);
+        match NonZero::new(val) {
+            None => ordinary(JumpPoint::from_raw(ptr.cast())),
+            Some(val) => lander(val),
+        }
     }
 }
 
@@ -111,100 +139,4 @@ where
 #[inline]
 pub unsafe fn long_jump(point: JumpPoint<'_>, result: NonZero<usize>) -> ! {
     unsafe { imp::long_jump_raw(point.0, result) }
-}
-
-#[cfg(all(target_arch = "x86_64", not(windows)))]
-mod imp {
-    use super::*;
-
-    #[inline]
-    pub(crate) unsafe fn set_jump_raw(
-        f: extern "C" fn(arg: *mut (), sp: *mut ()),
-        arg: *mut (),
-    ) -> usize {
-        let mut ret;
-        unsafe {
-            core::arch::asm!(
-                "lea rsi, [rip + 2f]",
-                "push rdi", // arg (align)
-                ".cfi_adjust_cfa_offset 8",
-                "push rbx",
-                ".cfi_adjust_cfa_offset 8",
-                "push rbp",
-                ".cfi_adjust_cfa_offset 8",
-                "push rsi",
-                ".cfi_adjust_cfa_offset 8",
-                "mov rsi, rsp",
-                "call {f}",
-                "add rsp, 32",
-                ".cfi_adjust_cfa_offset -32",
-                "xor esi, esi",
-                "jmp 3f",
-                "2:",
-                // Long jump lander.
-                ".cfi_adjust_cfa_offset 32",
-                ".cfi_remember_state",
-                ".cfi_def_cfa_register rax",
-                "mov rsp, rax",
-                ".cfi_restore_state",
-                "pop rax", // lander rip
-                ".cfi_adjust_cfa_offset -8",
-                "pop rbp",
-                ".cfi_adjust_cfa_offset -8",
-                "pop rbx",
-                ".cfi_adjust_cfa_offset -8",
-                "pop rdi", // arg (align)
-                ".cfi_adjust_cfa_offset -8",
-                "3:",
-
-                f = in(reg) f,
-                in("di") arg,
-                out("si") ret, // Do not use as input.
-
-                // Callee saved registers.
-                // lateout("bx") _, // LLVM reserved.
-                // lateout("sp") _, // sp
-                // lateout("bp") _, // LLVM reserved.
-                lateout("r12") _,
-                lateout("r13") _,
-                lateout("r14") _,
-                lateout("r15") _,
-                // Caller saved registers.
-                clobber_abi("sysv64"),
-                options(readonly),
-            );
-        }
-        ret
-    }
-
-    #[inline]
-    pub(crate) unsafe fn long_jump_raw(sp: *mut (), result: NonZero<usize>) -> ! {
-        unsafe {
-            core::arch::asm!(
-                "jmp qword ptr [rax]",
-                in("ax") sp,
-                in("si") result.get(),
-                options(noreturn),
-            )
-        }
-    }
-}
-
-#[cfg(not(all(target_arch = "x86_64", not(windows))))]
-mod imp {
-    use super::*;
-
-    compile_error!("sjlj2: unsupported platform");
-
-    #[inline]
-    pub(crate) unsafe fn set_jump_raw(
-        _f: extern "C" fn(arg: *mut (), sp: *mut ()),
-        _arg: *mut (),
-    ) -> usize {
-        unimplemented!()
-    }
-
-    pub(crate) unsafe fn long_jump_raw(_sp: *mut (), _result: NonZero<usize>) -> ! {
-        unimplemented!()
-    }
 }
