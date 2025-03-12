@@ -34,7 +34,12 @@ mod imp;
 #[path = "./x86.rs"]
 mod imp;
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+#[cfg(target_arch = "riscv64")]
+#[macro_use]
+#[path = "./riscv64.rs"]
+mod imp;
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86", target_arch = "riscv64")))]
 #[macro_use]
 mod imp {
     use super::*;
