@@ -19,3 +19,6 @@ harness = false
 
 [profile.release]
 debug = "line-tables-only"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }

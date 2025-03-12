@@ -1,4 +1,4 @@
-use super::*;
+use super::NonZero;
 
 pub(crate) type Buf = [*mut (); 4];
 

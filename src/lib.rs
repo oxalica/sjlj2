@@ -52,7 +52,7 @@ mod imp;
 )))]
 #[macro_use]
 mod imp {
-    use super::*;
+    use super::NonZero;
 
     compile_error!("sjlj2: unsupported platform");
 
@@ -99,6 +99,7 @@ impl JumpPoint<'_> {
     }
 
     /// Get the underlying raw state.
+    #[must_use]
     pub fn as_raw(&self) -> *mut () {
         self.0
     }
