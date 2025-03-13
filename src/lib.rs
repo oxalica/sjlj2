@@ -39,6 +39,11 @@ mod imp;
 #[path = "./riscv64.rs"]
 mod imp;
 
+#[cfg(target_arch = "riscv32")]
+#[macro_use]
+#[path = "./riscv32.rs"]
+mod imp;
+
 #[cfg(target_arch = "aarch64")]
 #[macro_use]
 #[path = "./aarch64.rs"]
@@ -48,6 +53,7 @@ mod imp;
     target_arch = "x86_64",
     target_arch = "x86",
     target_arch = "riscv64",
+    target_arch = "riscv32",
     target_arch = "aarch64"
 )))]
 #[macro_use]
