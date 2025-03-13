@@ -2,20 +2,6 @@ use std::num::NonZero;
 
 use sjlj2::{long_jump, set_jump};
 
-// For manual inspection.
-#[no_mangle]
-fn codegen(f: fn(*mut ()), g: fn(usize)) {
-    set_jump(
-        |jp| {
-            f(jp.as_raw());
-            unsafe { long_jump(jp, NonZero::new(42).unwrap()) };
-        },
-        |v| {
-            g(v.get());
-        },
-    );
-}
-
 #[test]
 fn smoke() {
     let ret = set_jump(|_| 42, |_| panic!("no jump"));
