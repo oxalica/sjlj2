@@ -43,13 +43,16 @@
                     inherit system;
                     crossSystem = "i686-linux";
                   }).buildPackages.gcc;
+
               CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER = lib.getExe pkgs.pkgsCross.riscv64.buildPackages.gcc;
               CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_RUNNER = "qemu-riscv64";
               CARGO_TARGET_RISCV32GC_UNKNOWN_LINUX_GNU_LINKER = lib.getExe pkgs.pkgsCross.riscv32.buildPackages.gcc;
               CARGO_TARGET_RISCV32GC_UNKNOWN_LINUX_GNU_RUNNER = "qemu-riscv32";
+
               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = lib.getExe pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc;
               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER = "qemu-aarch64";
               CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER = lib.getExe pkgs.pkgsCross.armv7l-hf-multiplatform.buildPackages.gcc;
+              CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER = "qemu-arm";
             };
           };
         }
