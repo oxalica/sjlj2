@@ -95,7 +95,6 @@
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
-use core::hint::black_box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::NonZero;
@@ -219,6 +218,9 @@ impl JumpPoint<'_> {
 /// If a long jump is issued on the checkpoint inside execution of `ordinary`, control flow goes
 /// back, execute `lander` and return its result from `set_jump`.
 ///
+/// `ordinary` and `lander` must not have significant `Drop`, otherwise a compile error is
+/// generated. The call frame cannot be POF if any of them has a significant `Drop` impl.
+///
 /// This function is even inline-able without procedure-call cost!
 ///
 /// # Safety
@@ -230,11 +232,24 @@ impl JumpPoint<'_> {
 /// It is possible to unwind from `ordinary` or `lander` closure.
 #[doc(alias = "setjmp")]
 #[inline(always)]
-pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
+pub fn set_jump<T, F, G>(mut ordinary: F, lander: G) -> T
 where
     F: FnOnce(JumpPoint<'_>) -> T,
     G: FnOnce(NonZero<usize>) -> T,
 {
+    const {
+        assert!(
+            !core::mem::needs_drop::<F>(),
+            "set_jump closures must not have significant Drop",
+        );
+        assert!(
+            !core::mem::needs_drop::<G>(),
+            "set_jump closures must not have significant Drop",
+        );
+        // `T` can have `Drop` impl because when it is returned, there are no more user code can
+        // unwind between its return from F or G and the return from `set_jump`.
+    }
+
     let mut buf = <MaybeUninit<imp::Buf>>::uninit();
     let ptr = buf.as_mut_ptr();
     let mut val: usize;
@@ -246,7 +261,13 @@ where
     if size_of::<F>() == 0 {
         // F must not mutate local states because it captures nothing.
     } else {
-        black_box(&ordinary);
+        unsafe {
+            core::arch::asm!(
+                "/*{}*/",
+                in(reg) &raw mut ordinary,
+                // May access memory.
+            );
+        }
     }
 
     #[cfg(feature = "unstable-asm-goto")]
