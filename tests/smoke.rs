@@ -1,4 +1,5 @@
 use std::num::NonZero;
+use std::panic::{catch_unwind, panic_any};
 
 use sjlj2::JumpPoint;
 
@@ -55,4 +56,22 @@ fn issue2625() {
     }
 
     assert_eq!(foo(), (13, 2));
+}
+
+#[test]
+fn panic() {
+    let ret = catch_unwind(|| {
+        JumpPoint::set_jump(|_| panic_any(42usize), |_| {});
+    });
+    let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
+    assert_eq!(payload, 42usize);
+
+    let ret = catch_unwind(|| {
+        JumpPoint::set_jump(
+            |jp| unsafe { jp.long_jump(NonZero::new(13).unwrap()) },
+            |v| panic_any(v.get()),
+        );
+    });
+    let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
+    assert_eq!(payload, 13usize);
 }

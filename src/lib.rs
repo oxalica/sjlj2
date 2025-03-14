@@ -204,6 +204,10 @@ impl JumpPoint<'_> {
 /// # Safety
 ///
 /// Yes, this function is actually safe to use. [`long_jump`] is unsafe, however.
+///
+/// # Panics
+///
+/// It is possible to unwind from `ordinary` or `lander` closure.
 #[doc(alias = "setjmp")]
 #[inline(always)]
 pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
@@ -246,10 +250,6 @@ where
 /// Long jump to a checkpoint, and executing corresponding `set_jump`'s `exceptional` closure.
 ///
 /// # Safety
-///
-/// - You must not unwind across a `set_jump` boundary.
-///   We will try our best to detect it and will abort the program in this case. But you must not
-///   rely on it.
 ///
 /// - When [`long_jump`] is called on the [`JumpPoint`] argument of `ordinary` closure during its
 ///   execution, all stack frames between that `long_jump` and this `set_jump`, must be all
