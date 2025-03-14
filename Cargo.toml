@@ -8,6 +8,7 @@ categories = ["embedded", "no-std::no-alloc"]
 keywords = ["setjmp", "longjmp"]
 repository = "https://github.com/oxalica/sjlj2"
 license = "MIT OR Apache-2.0"
+exclude = ["flake.nix", "flake.lock"]
 
 [features]
 default = []
