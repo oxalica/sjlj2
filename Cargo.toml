@@ -2,6 +2,12 @@
 name = "sjlj2"
 version = "0.1.0"
 edition = "2021"
+description = "Safer, cheaper and more ergonomic setjmp/longjmp in Rust"
+documentation = "https://docs.rs/sjlj2"
+categories = ["embedded", "no-std::no-alloc"]
+keywords = ["setjmp", "longjmp"]
+repository = "https://github.com/oxalica/sjlj2"
+license = "MIT OR Apache-2.0"
 
 [features]
 default = []
@@ -26,3 +32,6 @@ pedantic = { level = "warn", priority = -1 }
 # Inlining `set_jump` to achieve the advertized good performance, by avoiding
 # closure call cost.
 inline_always = "allow"
+
+# False positive on `ARMv8`.
+doc_markdown = "allow"

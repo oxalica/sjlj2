@@ -1,7 +1,7 @@
 //! # Safer[^1], cheaper and more ergonomic setjmp/longjmp in Rust[^2].
 //!
 //! [^1]: [`long_jump`] is still unsafe, though, due to [POF][pof] restrictions.
-//!       See more in [`long_jump`].
+//!       See more about safety in [`long_jump`].
 //! [^2]: ...and assembly. No C trampoline is involved!
 //!
 //! [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
@@ -20,6 +20,58 @@
 //!
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
 //!   all callee-saved registers. Inline-able `set_jump` without procedure call cost.
+//!
+//! - No std.
+//!
+//!   This crate is `#[no_std]` and does not use `alloc` either.
+//!   It is suitable for embedded environment.
+//!
+//! ```
+//! use std::num::NonZero;
+//! use sjlj2::JumpPoint;
+//!
+//! let mut a = 42;
+//! // Execute with a jump checkpoint. Both closures can return a value.
+//! let b = JumpPoint::set_jump(
+//!     // The ordinary path that is always executed.
+//!     |jump_point| {
+//!         a = 13;
+//!         // Jump back to the alternative path with a `NonZero<usize>` value.
+//!         // SAFETY: All frames between `set_jump` and `long_jump` are POFs.
+//!         unsafe {
+//!             jump_point.long_jump(NonZero::new(99).unwrap());
+//!         }
+//!     },
+//!     // The alternative path which is only executed once `long_jump` is called.
+//!     |v| {
+//!         // The carried value.
+//!         v.get()
+//!     }
+//! );
+//! assert_eq!(a, 13);
+//! assert_eq!(b, 99);
+//! ```
+//!
+//! ## Features
+//!
+//! - `unstable-asm-goto`: enable use of `asm_goto` and `asm_goto_with_outputs` unstable features.
+//!
+//!   This requires a nightly rustc, but produces more optimal code with one-less conditional jump.
+//!
+//!   ⚠️ Warning: `asm_goto_with_outputs` is [reported to be buggy][asm_goto_bug] in some cases. It
+//!   is unknown that if our code is affected. Do NOT enable this feature unless you accept the
+//!   risk.
+//!
+//! [asm_goto_bug]: https://github.com/llvm/llvm-project/issues/74483
+//!
+//! ## Supported platforms
+//!
+//! - x86 (i686)
+//! - x86\_64
+//! - riscv64
+//! - riscv32 (with and without E-extension)
+//! - aarch64 (ARMv8)
+//! - arm
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
@@ -203,7 +255,16 @@ where
 ///   execution, all stack frames between that `long_jump` and this `set_jump`, must be all
 ///   [Plain Old Frames][pof].
 ///
+///   Note: It is explicitly said in [RFC2945][pof] that
+///   > When deallocating Rust POFs: for now, this is not specified, and must be considered
+///   > undefined behavior.
+///
+///   But in practice, this crate does not suffers the
+///   [relavent optimization issue caused by return-twice][misopt],
+///   and should be UB-free as long as only POFs are `long_jump`ed over.
+///
 /// [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
+/// [misopt]: https://github.com/rust-lang/rfcs/issues/2625
 #[doc(alias = "longjmp")]
 #[inline]
 pub unsafe fn long_jump(point: JumpPoint<'_>, result: NonZero<usize>) -> ! {
