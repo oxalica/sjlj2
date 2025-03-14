@@ -20,6 +20,7 @@
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
+use core::hint::black_box;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::NonZero;
@@ -136,6 +137,16 @@ where
     let mut buf = <MaybeUninit<imp::Buf>>::uninit();
     let ptr = buf.as_mut_ptr();
     let mut val: usize;
+
+    // Show the optimizer that `ordinary` may be called in both ordinary and landing paths.
+    // So it cannot assume that variables that are captured by `ordinary` are unchanged in the
+    // lander path -- they must be reloaded.
+    // This fixes <https://github.com/rust-lang/rfcs/issues/2625>.
+    if size_of::<F>() == 0 {
+        // F must not mutate local states because it captures nothing.
+    } else {
+        black_box(&ordinary);
+    }
 
     #[cfg(feature = "unstable-asm-goto")]
     unsafe {
