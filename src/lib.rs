@@ -84,9 +84,9 @@
 //!   - Unknown performance because it fails to build for me. (Poor compatibility?)
 //!   - Suffers from [misoptimization][misopt].
 //!
-//! - [`sjlj`](https://crates.io/crates/setjmp)
+//! - [`sjlj`](https://crates.io/crates/sjlj)
 //!
-//!   - Uses inline assembly but involving a un-inline-able call instruction.
+//!   - Uses inline assembly but involving an un-inline-able call instruction.
 //!   - Only x86\_64 is supported.
 //!   - Suffers from [misoptimization][misopt].
 //!   - Slower `long_jump` because of more register restoring.
@@ -280,7 +280,7 @@ where
 ///   > undefined behavior.
 ///
 ///   But in practice, this crate does not suffers the
-///   [relavent optimization issue caused by return-twice][misopt],
+///   [relevant optimization issue caused by return-twice][misopt],
 ///   and should be UB-free as long as only POFs are `long_jump`ed over.
 ///
 /// [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
