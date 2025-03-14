@@ -23,14 +23,14 @@ fn bench_sjlj(c: &mut Criterion) {
         b.iter(|| {
             nest(NEST_LVL, &|| {
                 let _ = black_box(capture);
-            })
+            });
         });
     });
 
     for (name, jump, lvl, expect) in [
         ("ordinary", false, 0, 42),
-        ("jump0", true, 0, 13),
-        (&format!("jump{NEST_LVL}"), true, NEST_LVL, 13),
+        ("jump0", true, 0, 14),
+        (&format!("jump{NEST_LVL}"), true, NEST_LVL, 14),
     ] {
         c.bench_function(&format!("sjlj/{name}"), |b| {
             let jump = black_box(jump);
@@ -43,7 +43,7 @@ fn bench_sjlj(c: &mut Criterion) {
                         }
                         42usize
                     },
-                    |n| n.get(),
+                    |n| n.get() + 1,
                 );
                 assert_eq!(ret, expect);
             });
@@ -61,7 +61,7 @@ fn bench_sjlj(c: &mut Criterion) {
                 });
                 let ret = match ret {
                     Ok(x) => x,
-                    Err(err) => *err.downcast::<usize>().unwrap(),
+                    Err(err) => *err.downcast::<usize>().unwrap() + 1,
                 };
                 assert_eq!(ret, expect);
             });

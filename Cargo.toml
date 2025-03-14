@@ -22,3 +22,7 @@ debug = "line-tables-only"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+
+# Inlining `set_jump` to achieve the advertized good performance, by avoiding
+# closure call cost.
+inline_always = "allow"

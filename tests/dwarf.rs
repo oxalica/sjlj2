@@ -19,9 +19,9 @@ fn dwarf_unwind() {
         for _ in 0..CHUNK {
             let ret = set_jump(
                 |jp| unsafe { long_jump(jp, NonZero::new(13).unwrap()) },
-                |ret| ret.get(),
+                |ret| ret.get() + 1,
             );
-            assert_eq!(ret, 13);
+            assert_eq!(ret, 14);
         }
     }
 }

@@ -1,22 +1,25 @@
 //! # Safer[^1], cheaper and more ergonomic setjmp/longjmp in Rust[^2].
 //!
-//! [^1]: [`long_jump`] is still unsafe, though, due to [POF][pof] restrictions. See more in [`long_jump`].
+//! [^1]: [`long_jump`] is still unsafe, though, due to [POF][pof] restrictions.
+//!       See more in [`long_jump`].
 //! [^2]: ...and assembly. No C trampoline is involved!
 //!
 //! [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
 //!
 //! - Ergonomic Rusty API for typical usages. Uses closure API instead of multiple-return.
 //!
-//!   Multiple-return functions are undefined behaviors due to [bad (fatal) interaction with
-//!   optimizer](https://github.com/rust-lang/rfcs/issues/2625).
+//!   Multiple-return functions are undefined behaviors due to
+//!   [fatal interaction with optimizer](https://github.com/rust-lang/rfcs/issues/2625).
+//!   This crate does not suffer from the misoptimization (covered in `tests/smoke.rs`).
 //!
 //! - Single-use jump checkpoint.
 //!
-//!   No jump-after-jump disaster. No coroutine-at-home. Less register backups.
+//!   No jump-after-jump disaster. No coroutine-at-home.
 //!
 //! - Minimal memory and performance footprint.
 //!
-//!   Single `usize` state. Let optimizer save only necessary states rather than bulk saving.
+//!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
+//!   all callee-saved registers. Inline-able `set_jump` without procedure call cost.
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
@@ -84,7 +87,7 @@ mod imp {
 
 /// A jump checkpoint that you can go back to at any time.
 ///
-/// It consists of a single machine word, the stack pointer.
+/// It consists of a single machine word.
 #[doc(alias = "jmp_buf")]
 #[derive(Debug, Clone, Copy)]
 pub struct JumpPoint<'a>(*mut (), PhantomData<&'a mut &'a ()>);
@@ -113,8 +116,28 @@ impl JumpPoint<'_> {
 
     /// Get the underlying raw state.
     #[must_use]
-    pub fn as_raw(&self) -> *mut () {
+    pub fn as_raw(self) -> *mut () {
         self.0
+    }
+
+    /// Alias of [`set_jump`].
+    #[inline(always)]
+    pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
+    where
+        F: FnOnce(JumpPoint<'_>) -> T,
+        G: FnOnce(NonZero<usize>) -> T,
+    {
+        set_jump(ordinary, lander)
+    }
+
+    /// Alias of [`long_jump`].
+    ///
+    /// # Safety
+    ///
+    /// See [`long_jump`].
+    #[inline(always)]
+    pub unsafe fn long_jump(self, result: NonZero<usize>) -> ! {
+        long_jump(self, result)
     }
 }
 
@@ -124,11 +147,13 @@ impl JumpPoint<'_> {
 /// If a long jump is issued on the checkpoint inside execution of `ordinary`, control flow goes
 /// back, execute `lander` and return its result from `set_jump`.
 ///
+/// This function is even inline-able without procedure-call cost!
+///
 /// # Safety
 ///
 /// Yes, this function is actually safe to use. [`long_jump`] is unsafe, however.
 #[doc(alias = "setjmp")]
-#[inline]
+#[inline(always)]
 pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
 where
     F: FnOnce(JumpPoint<'_>) -> T,

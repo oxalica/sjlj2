@@ -1,29 +1,31 @@
 use std::num::NonZero;
 
-use sjlj2::{long_jump, set_jump};
+use sjlj2::JumpPoint;
 
 #[test]
 fn smoke() {
-    let ret = set_jump(|_| 42, |_| panic!("no jump"));
+    let ret = JumpPoint::set_jump(|_| 42, |_| panic!("no jump"));
     assert_eq!(ret, 42);
 
     let capture = 42;
-    let ret = set_jump(
+    let ret = JumpPoint::set_jump(
         move |_| capture + 1,
         move |_| {
+            // Force capture.
+            #[allow(clippy::no_effect_underscore_binding)]
             let _capture = capture;
             panic!("no jump");
         },
     );
     assert_eq!(ret, 43);
 
-    let ret = set_jump(
-        |jp| unsafe { long_jump(jp, NonZero::new(13).unwrap()) },
-        |ret| ret.get(),
+    let ret = JumpPoint::set_jump(
+        |jp| unsafe { jp.long_jump(NonZero::new(13).unwrap()) },
+        |v| v.get() + 1,
     );
-    assert_eq!(ret, 13);
-    let ret = set_jump(
-        move |jp| unsafe { long_jump(jp, NonZero::new(capture).unwrap()) },
+    assert_eq!(ret, 14);
+    let ret = JumpPoint::set_jump(
+        move |jp| unsafe { jp.long_jump(NonZero::new(capture).unwrap()) },
         move |ret| ret.get() * 100 + capture,
     );
     assert_eq!(ret, 4242);
@@ -45,12 +47,12 @@ fn issue2625() {
             |y| {
                 // Step 3: when setjmp returns 1 x has always been
                 // modified to be  == 13 so this should always return 13:
-                y.get()
+                y.get() + 1
             },
         );
         // The optimizer must not assume `x` is unchanged in the long_jump lander path.
         (x, y)
     }
 
-    assert_eq!(foo(), (13, 1));
+    assert_eq!(foo(), (13, 2));
 }
