@@ -9,7 +9,7 @@
 //! - Ergonomic Rusty API for typical usages. Uses closure API instead of multiple-return.
 //!
 //!   Multiple-return functions are undefined behaviors due to
-//!   [fatal interaction with optimizer](https://github.com/rust-lang/rfcs/issues/2625).
+//!   [fatal interaction with optimizer][misopt].
 //!   This crate does not suffer from the misoptimization (covered in `tests/smoke.rs`).
 //!
 //! - Single-use jump checkpoint.
@@ -20,6 +20,9 @@
 //!
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
 //!   all callee-saved registers. Inline-able `set_jump` without procedure call cost.
+//!
+//!   - 2.3ns `set_jump` setup and 3.2ns `long_jump` on a modern x86\_64 CPU.
+//!     ~300-490x faster than `catch_unwind`-`panic_any!`.
 //!
 //! - No std.
 //!
@@ -72,6 +75,23 @@
 //! - riscv32 (with and without E-extension)
 //! - aarch64 (ARMv8)
 //! - arm
+//!
+//! ## Similar crates
+//!
+//! - [`setjmp`](https://crates.io/crates/setjmp)
+//!
+//!   - Generates from C thus needs a correctly-setup C compiler to build.
+//!   - Unknown performance because it fails to build for me. (Poor compatibility?)
+//!   - Suffers from [misoptimization][misopt].
+//!
+//! - [`sjlj`](https://crates.io/crates/setjmp)
+//!
+//!   - Uses inline assembly but involving a un-inline-able call instruction.
+//!   - Only x86\_64 is supported.
+//!   - Suffers from [misoptimization][misopt].
+//!   - Slower `long_jump` because of more register restoring.
+//!
+//! [misopt]: https://github.com/rust-lang/rfcs/issues/2625
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
