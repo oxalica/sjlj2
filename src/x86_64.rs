@@ -58,13 +58,10 @@ macro_rules! set_jump_raw {
 pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         core::arch::asm!(
-            ".cfi_remember_state",
-            ".cfi_undefined",
             "mov rbp, qword ptr [rcx + 24]",
             "mov rbx, qword ptr [rcx + 16]",
             "mov rsp, qword ptr [rcx + 8]",
             "jmp qword ptr [rcx]",
-            ".cfi_restore_state",
             in("cx") buf,
             in("ax") result.get(),
             options(noreturn),
