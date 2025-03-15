@@ -2,17 +2,11 @@ use super::NonZero;
 
 pub(crate) type Buf = [*mut (); 4];
 
-macro_rules! set_jump_raw {
-    ($val:expr, $buf_ptr:expr, $lander:block) => {
+#[cfg(not(target_os = "macos"))]
+macro_rules! set_jump_raw_impl {
+    ($($tt:tt)*) => {
         core::arch::asm!(
-            "adr x0, {lander}",
-            "mov x2, sp",
-            "stp x0, x2, [x1]",
-            "stp x19, x29, [x1, #16]",
-
-            in("x1") $buf_ptr, // Restored in long_jump_raw.
-            out("x0") $val,
-            lander = label $lander,
+            $($tt)*
 
             // Callee saved registers.
             // lateout("sp") _, // sp
@@ -35,24 +29,20 @@ macro_rules! set_jump_raw {
             clobber_abi("C"),
             options(readonly),
         )
-    };
-    ($val:expr, $buf_ptr:expr) => {
-        core::arch::asm!(
-            "adr x0, 2f",
-            "mov x2, sp",
-            "stp x0, x2, [x1]",
-            "stp x19, x29, [x1, #16]",
-            "mov x0, 0",
-            "2:",
+    }
+}
 
-            in("x1") $buf_ptr, // Restored in long_jump_raw.
-            out("x0") $val,
+#[cfg(target_os = "macos")]
+macro_rules! set_jump_raw_impl {
+    ($($tt:tt)*) => {
+        core::arch::asm!(
+            $($tt)*
 
             // Callee saved registers.
             // lateout("sp") _, // sp
             lateout("x16") _,
             lateout("x17") _,
-            lateout("x18") _,
+            // lateout("x18") _, // Macos reserved.
             // lateout("x19") _, // LLVM reserved.
             lateout("x20") _,
             lateout("x21") _,
@@ -68,6 +58,34 @@ macro_rules! set_jump_raw {
             // Caller saved registers.
             clobber_abi("C"),
             options(readonly),
+        )
+    }
+}
+
+macro_rules! set_jump_raw {
+    ($val:expr, $buf_ptr:expr, $lander:block) => {
+        set_jump_raw_impl!(
+            "adr x0, {lander}",
+            "mov x2, sp",
+            "stp x0, x2, [x1]",
+            "stp x19, x29, [x1, #16]",
+
+            in("x1") $buf_ptr, // Restored in long_jump_raw.
+            out("x0") $val,
+            lander = label $lander,
+        )
+    };
+    ($val:expr, $buf_ptr:expr) => {
+        set_jump_raw_impl!(
+            "adr x0, 2f",
+            "mov x2, sp",
+            "stp x0, x2, [x1]",
+            "stp x19, x29, [x1, #16]",
+            "mov x0, 0",
+            "2:",
+
+            in("x1") $buf_ptr, // Restored in long_jump_raw.
+            out("x0") $val,
         )
     };
 }
