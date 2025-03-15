@@ -234,6 +234,8 @@ impl JumpPoint<'_> {
 ///
 /// `ordinary` and `lander` must not have significant `Drop`, otherwise a compile error is
 /// generated. The call frame cannot be POF if any of them has a significant `Drop` impl.
+/// Since it is implemented with [`core::mem::needs_drop`], it may generates false positive
+/// compile errors.
 ///
 /// This function is even inline-able without procedure-call cost!
 ///

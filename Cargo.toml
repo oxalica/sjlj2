@@ -1,6 +1,6 @@
 [package]
 name = "sjlj2"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Safer, cheaper and more ergonomic setjmp/longjmp in Rust"
 documentation = "https://docs.rs/sjlj2"
