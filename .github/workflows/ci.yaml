@@ -1,0 +1,141 @@
+name: CI
+on:
+  pull_request:
+  push:
+  schedule:
+    - cron: '33 20 * * 0' # Sun *-*-* 20:33:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_BACKTRACE: full
+
+jobs:
+  code-style:
+    name: Code style
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.schedule != '33 20 * * *'
+    env:
+      RUSTFLAGS: -Dwarnings
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup update --no-self-update stable
+          rustup default stable
+      - run: cargo fmt --all -- --check
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --workspace
+      - run: cargo doc --workspace
+
+  test:
+    needs: code-style
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta, nightly]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: Test ${{ matrix.rust }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          rustup update --no-self-update
+          rustup default ${{ matrix.rust }}
+      - name: Enable type layout randomization
+        run: echo RUSTFLAGS=${RUSTFLAGS}\ -Zrandomize-layout >> $GITHUB_ENV
+        if: matrix.rust == 'nightly'
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: |
+          cargo build --all-targets
+          cargo build --all-targets --release
+      - name: Test
+        run: cargo test ${{ matrix.feat }}
+      - name: Test release
+        run: cargo test --release ${{ matrix.feat }} -- --include-ignored
+
+      - name: Build asm-goto
+        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        run: |
+          cargo build --all-targets --features=unstable-asm-goto
+          cargo build --all-targets --features=unstable-asm-goto --release
+      - name: Test asm-goto
+        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        run: cargo test --features=unstable-asm-goto
+      - name: Test asm-goto release
+        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        run: cargo test --release --features=unstable-asm-goto -- --include-ignored
+
+  test-exotic:
+    needs: code-style
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - aarch64-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+          - i686-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+        include:
+          - platform: riscv32i-unknown-none-elf
+            nostd: true
+          - platform: riscv32e-unknown-none-elf
+            nostd: true
+    env:
+      CARGO_ARGS: ${{ matrix.nostd && '-Zbuild-std=core --example=codegen_nostd --no-default-features' || '--all-targets' }}
+    name: Test QEMU ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare devShell
+        run: nix develop --command true
+      - name: Prepare devShell
+        run: nix develop --command true
+
+      - name: Disable dev-dependencies and set target
+        run: |
+          sed \
+            -e 's/\[dev-dependencies]/[workaround-avoid-dev-deps]/g' \
+            -e 's/bench/no-bench/g' \
+            --in-place ./Cargo.toml
+          rm -r benches tests/dwarf.rs
+          mkdir -p .cargo
+          echo 'build.target = "${{ matrix.platform }}"' >.cargo/config.toml
+
+      - name: Build
+        run: |
+          nix develop --command cargo build $CARGO_ARGS
+          nix develop --command cargo build $CARGO_ARGS --release
+          nix develop --command cargo build $CARGO_ARGS --features=unstable-asm-goto
+          nix develop --command cargo build $CARGO_ARGS --features=unstable-asm-goto --release
+
+      - name: Test
+        if: ${{ !matrix.nostd }}
+        run: nix develop --command cargo test
+      - name: Test release
+        if: ${{ !matrix.nostd }}
+        run: nix develop --command cargo test --release
+      - name: Test asm-goto
+        if: ${{ !matrix.nostd }}
+        run: nix develop --command cargo test --features=unstable-asm-goto
+      - name: Test asm-goto release
+        if: ${{ !matrix.nostd }}
+        run: nix develop --command cargo test --features=unstable-asm-goto --release
