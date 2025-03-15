@@ -102,7 +102,7 @@
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
 use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::mem::{size_of, MaybeUninit};
 use core::num::NonZero;
 
 #[cfg(target_arch = "x86_64")]
@@ -167,7 +167,7 @@ mod imp {
 /// It consists of a single machine word.
 #[doc(alias = "jmp_buf")]
 #[derive(Debug, Clone, Copy)]
-pub struct JumpPoint<'a>(*mut (), PhantomData<&'a mut &'a ()>);
+pub struct JumpPoint<'a>(*mut (), PhantomData<fn(&'a ()) -> &'a ()>);
 
 #[cfg(doctest)]
 /// ```compile_fail
@@ -178,6 +178,16 @@ pub struct JumpPoint<'a>(*mut (), PhantomData<&'a mut &'a ()>);
 /// fn f(j: sjlj2::JumpPoint<'_>) -> impl Sync { j }
 /// ```
 fn _assert_not_or_sync() {}
+
+#[cfg(doctest)]
+/// ```compile_fail
+/// fn f<'a, 'b: 'a>(j: sjlj2::JumpPoint<'a>) -> sjlj2::JumpPoint<'b> { j }
+/// ```
+///
+/// ```compile_fail
+/// fn f<'a: 'b, 'b>(j: sjlj2::JumpPoint<'a>) -> sjlj2::JumpPoint<'b> { j }
+/// ```
+fn _assert_invariant() {}
 
 impl JumpPoint<'_> {
     /// Reconstruct from a raw state.
@@ -270,7 +280,7 @@ where
         unsafe {
             core::arch::asm!(
                 "/*{}*/",
-                in(reg) &raw mut ordinary,
+                in(reg) core::ptr::addr_of_mut!(ordinary),
                 // May access memory.
             );
         }

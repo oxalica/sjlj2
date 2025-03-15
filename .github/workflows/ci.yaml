@@ -139,3 +139,28 @@ jobs:
       - name: Test asm-goto release
         if: ${{ !matrix.nostd }}
         run: nix develop --command cargo test --features=unstable-asm-goto --release
+
+  msrv:
+    name: MSRV
+    needs: code-style
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.schedule != '33 20 * * *'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust 1.79
+        run: |
+          rustup update --no-self-update stable
+          rustup default 1.79
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: |
+          cargo build --all-targets
+          cargo build --all-targets --release
+      - name: Test
+        run: cargo test
+      - name: Test release
+        run: cargo test --release -- --include-ignored
