@@ -1,4 +1,5 @@
 //! Test DWARF information correctness by random sampling and unwinding.
+#![cfg(target_os = "linux")]
 use std::num::NonZero;
 use std::time::{Duration, Instant};
 
