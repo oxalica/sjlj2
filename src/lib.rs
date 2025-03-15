@@ -1,10 +1,8 @@
 //! # Safer[^1], cheaper and more ergonomic setjmp/longjmp in Rust[^2].
 //!
-//! [^1]: [`long_jump`] is still unsafe, though, due to [POF][pof] restrictions.
+//! [^1]: [`long_jump`] is still unsafe and is technically UB, though.
 //!       See more about safety in [`long_jump`].
 //! [^2]: ...and assembly. No C trampoline is involved!
-//!
-//! [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
 //!
 //! - Ergonomic and safer* Rusty API for typical usages. Closure API instead of multiple-return.
 //!
@@ -69,11 +67,11 @@
 //!
 //!   ⚠️ Warning: `asm_goto_with_outputs` is [reported to be buggy][asm_goto_bug] in some cases. It
 //!   is unknown that if our code is affected. Do NOT enable this feature unless you accept the
-//!   risk.
+//!   risk. aarch64-apple-darwin is known to be buggy with this feature, thus is incompatible.
 //!
 //! [asm_goto_bug]: https://github.com/llvm/llvm-project/issues/74483
 //!
-//! ## Supported platforms
+//! ## Supported architecture
 //!
 //! - x86 (i686)
 //! - x86\_64
