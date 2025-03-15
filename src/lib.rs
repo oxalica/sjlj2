@@ -6,11 +6,17 @@
 //!
 //! [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
 //!
-//! - Ergonomic Rusty API for typical usages. Uses closure API instead of multiple-return.
+//! - Ergonomic and safer* Rusty API for typical usages. Closure API instead of multiple-return.
 //!
 //!   Multiple-return functions are undefined behaviors due to
 //!   [fatal interaction with optimizer][misopt].
 //!   This crate does not suffer from the misoptimization (covered in `tests/smoke.rs`).
+//!
+//!   ⚠️  We admit that since it's not yet undefined to force unwind Rust POFs and/or
+//!   longjmp's half execution semantic, `long_jump` is still technically undefined behavior.
+//!   But this crate is an attempt to make a semantically-correct abstraction free from
+//!   misoptimization, and you accept the risk by using this crate.
+//!   If you find any misoptimization in practice, please open an issue.
 //!
 //! - Single-use jump checkpoint.
 //!
