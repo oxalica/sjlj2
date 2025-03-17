@@ -1,7 +1,5 @@
 use super::NonZero;
 
-pub(crate) type Buf = [*mut (); 4];
-
 #[cfg(not(target_os = "macos"))]
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
@@ -27,7 +25,6 @@ macro_rules! set_jump_raw_impl {
             lateout("lr") _,
             // Caller saved registers.
             clobber_abi("C"),
-            options(readonly),
         )
     }
 }
@@ -64,50 +61,58 @@ macro_rules! set_jump_raw_impl {
             lateout("lr") _,
             // Caller saved registers.
             clobber_abi("C"),
-            options(readonly),
         )
     }
 }
 
 macro_rules! set_jump_raw {
-    ($val:expr, $buf_ptr:expr, $lander:block) => {
+    ($val:expr, $f:expr, $data:expr, $lander:block) => {
         set_jump_raw_impl!(
-            "adr x0, {lander}",
-            "mov x2, sp",
-            "stp x0, x2, [x1]",
-            "stp x19, x29, [x1, #16]",
+            "adr x2, {lander}",
+            "stp x2, x2, [sp, #-16]!",
+            ".cfi_adjust_cfa_offset 16",
+            "stp x19, x29, [sp, #-16]!",
+            ".cfi_adjust_cfa_offset 16",
+            "mov x1, sp",
+            "bl {f}",
+            "add sp, sp, 32",
+            ".cfi_adjust_cfa_offset -32",
 
-            in("x1") $buf_ptr, // Restored in long_jump_raw.
-            out("x0") $val,
+            f = sym $f,
             lander = label $lander,
+            inout("x0") $data => $val,
         )
     };
-    ($val:expr, $buf_ptr:expr) => {
+    ($val:expr, $f:expr, $data:expr) => {
         set_jump_raw_impl!(
-            "adr x0, 2f",
-            "mov x2, sp",
-            "stp x0, x2, [x1]",
-            "stp x19, x29, [x1, #16]",
-            "mov x0, 0",
+            "adr x2, 2f",
+            "stp x2, x2, [sp, #-16]!",
+            ".cfi_adjust_cfa_offset 16",
+            "stp x19, x29, [sp, #-16]!",
+            ".cfi_adjust_cfa_offset 16",
+            "mov x1, sp",
+            "bl {f}",
+            "add sp, sp, 32",
+            ".cfi_adjust_cfa_offset -32",
             "2:",
 
-            in("x1") $buf_ptr, // Restored in long_jump_raw.
-            out("x0") $val,
+            f = sym $f,
+            inout("x0") $data => $val,
         )
     };
 }
 
 #[inline]
-pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
+pub(crate) unsafe fn long_jump_raw(jp: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         core::arch::asm!(
-            "ldp x19, x29, [x1, #16]",
-            "ldp lr, x2, [x1]",
-            "mov sp, x2",
-            "ret",
-            in("x1") buf,
+            "ldp x19, x29, [x1]",
+            "ldr x2, [x1, #16]",
+            "add sp, x1, 32",
+            "br x2",
             in("x0") result.get(),
-            options(noreturn),
+            in("x1") jp,
+            options(noreturn, nostack, readonly),
         )
     }
 }

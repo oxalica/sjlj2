@@ -10,8 +10,8 @@
 //!   [fatal interaction with optimizer][misopt].
 //!   This crate does not suffer from the misoptimization (covered in `tests/smoke.rs`).
 //!
-//!   ⚠️  We admit that since it's not yet undefined to force unwind Rust POFs and/or
-//!   longjmp's half execution semantic, `long_jump` is still technically undefined behavior.
+//!   ⚠️  We admit that since it's not yet undefined to force unwind Rust POFs,
+//!   `long_jump` is still technically undefined behavior.
 //!   But this crate is an attempt to make a semantically-correct abstraction free from
 //!   misoptimization, and you accept the risk by using this crate.
 //!   If you find any misoptimization in practice, please open an issue.
@@ -25,7 +25,7 @@
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
 //!   all callee-saved registers. Inline-able `set_jump` without procedure call cost.
 //!
-//!   - 2.3ns `set_jump` setup and 3.2ns `long_jump` on a modern x86\_64 CPU.
+//!   - 2.4ns `set_jump` setup and 2.9ns `long_jump` on a modern x86\_64 CPU.
 //!     ~300-490x faster than `catch_unwind`-`panic_any!`.
 //!
 //! - No std.
@@ -90,9 +90,8 @@
 //!
 //! - [`sjlj`](https://crates.io/crates/sjlj)
 //!
-//!   - Uses inline assembly but involving an un-inline-able call instruction.
 //!   - Only x86\_64 is supported.
-//!   - Suffers from [misoptimization][misopt].
+//!   - Suffers from [misoptimization][misopt] due to multi-return.
 //!   - Slower `long_jump` because of more register restoring.
 //!
 //! [misopt]: https://github.com/rust-lang/rfcs/issues/2625
@@ -100,7 +99,7 @@
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(test), no_std)]
 use core::marker::PhantomData;
-use core::mem::{size_of, MaybeUninit};
+use core::mem::ManuallyDrop;
 use core::num::NonZero;
 
 #[cfg(target_arch = "x86_64")]
@@ -146,8 +145,6 @@ mod imp {
     use super::NonZero;
 
     compile_error!("sjlj2: unsupported platform");
-
-    pub type Buf = [usize; 0];
 
     macro_rules! set_jump_raw {
         ($val:tt, $($tt:tt)*) => {
@@ -206,7 +203,7 @@ impl JumpPoint<'_> {
     }
 
     /// Alias of [`set_jump`].
-    #[inline(always)]
+    #[inline]
     pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
     where
         F: FnOnce(JumpPoint<'_>) -> T,
@@ -220,7 +217,7 @@ impl JumpPoint<'_> {
     /// # Safety
     ///
     /// See [`long_jump`].
-    #[inline(always)]
+    #[inline]
     pub unsafe fn long_jump(self, result: NonZero<usize>) -> ! {
         long_jump(self, result)
     }
@@ -237,7 +234,10 @@ impl JumpPoint<'_> {
 /// Since it is implemented with [`core::mem::needs_drop`], it may generates false positive
 /// compile errors.
 ///
-/// This function is even inline-able without procedure-call cost!
+/// This function is inline-able but `ordinary` is called in a C function wrapper because it must
+/// has its own stack frame to avoid [misoptimization][misopt2].
+///
+/// [misopt2]: https://github.com/rust-lang/libc/issues/1596
 ///
 /// # Safety
 ///
@@ -245,10 +245,14 @@ impl JumpPoint<'_> {
 ///
 /// # Panics
 ///
-/// It is possible to unwind from `ordinary` or `lander` closure.
+/// It is allowed to panic in `ordinary` or `lander` closure. But panics in `ordinary` cannot
+/// unwind across `set_jump`, or it will abort the process.
+/// Panics in `lander` can unwind across `set_jump` though.
 #[doc(alias = "setjmp")]
-#[inline(always)]
-pub fn set_jump<T, F, G>(mut ordinary: F, lander: G) -> T
+#[inline]
+// For better logical order.
+#[allow(clippy::items_after_statements)]
+pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
 where
     F: FnOnce(JumpPoint<'_>) -> T,
     G: FnOnce(NonZero<usize>) -> T,
@@ -266,40 +270,51 @@ where
         // unwind between its return from F or G and the return from `set_jump`.
     }
 
-    let mut buf = <MaybeUninit<imp::Buf>>::uninit();
-    let ptr = buf.as_mut_ptr();
-    let mut val: usize;
+    union Data<T, F> {
+        func: ManuallyDrop<F>,
+        ret: ManuallyDrop<T>,
+    }
 
-    // Show the optimizer that `ordinary` may be called in both ordinary and landing paths.
-    // So it cannot assume that variables that are captured by `ordinary` are unchanged in the
-    // lander path -- they must be reloaded.
-    // This fixes <https://github.com/rust-lang/rfcs/issues/2625>.
-    if size_of::<F>() == 0 {
-        // F must not mutate local states because it captures nothing.
-    } else {
-        unsafe {
-            core::arch::asm!(
-                "/*{}*/",
-                in(reg) core::ptr::addr_of_mut!(ordinary),
-                // May access memory.
-            );
+    struct AbortGuard;
+    impl Drop for AbortGuard {
+        fn drop(&mut self) {
+            // Manually trigger a double-panic abort.
+            // Workaround: <https://github.com/rust-lang/rust/issues/67952>
+            panic!("panic cannot unwind across set_jump");
         }
     }
 
+    unsafe extern "C" fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
+        data: &mut Data<T, F>,
+        jp: *mut (),
+    ) -> usize {
+        let guard = AbortGuard;
+        let f = unsafe { ManuallyDrop::take(&mut data.func) };
+        let ret = f(unsafe { JumpPoint::from_raw(jp) });
+        data.ret = ManuallyDrop::new(ret);
+        core::mem::forget(guard);
+        0
+    }
+
+    let mut data = Data::<T, F> {
+        func: ManuallyDrop::new(ordinary),
+    };
+    let val: usize;
+
     #[cfg(feature = "unstable-asm-goto")]
     unsafe {
-        set_jump_raw!(val, ptr, {
+        set_jump_raw!(val, wrap::<T, F>, &mut data, {
             unsafe { return lander(NonZero::new_unchecked(val)) }
         });
-        ordinary(JumpPoint::from_raw(ptr.cast()))
+        ManuallyDrop::take(&mut data.ret)
     }
 
     #[cfg(not(feature = "unstable-asm-goto"))]
-    unsafe {
-        set_jump_raw!(val, ptr);
+    {
+        unsafe { set_jump_raw!(val, wrap::<T, F>, &mut data) };
         match NonZero::new(val) {
-            None => ordinary(JumpPoint::from_raw(ptr.cast())),
-            Some(val) => lander(val),
+            None => unsafe { ManuallyDrop::take(&mut data.ret) },
+            Some(v) => lander(v),
         }
     }
 }

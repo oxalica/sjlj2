@@ -1,18 +1,9 @@
 use super::NonZero;
 
-pub(crate) type Buf = [*mut (); 4];
-
-macro_rules! set_jump_raw {
-    ($val:expr, $buf_ptr:expr, $lander:block) => {
+macro_rules! set_jump_raw_impl {
+    ($($tt:tt)*) => {
         core::arch::asm!(
-            "lea eax, [{lander}]",
-            "mov dword ptr [ecx], eax",
-            "mov dword ptr [ecx + 4], esp",
-            "mov dword ptr [ecx + 8], esi",
-            "mov dword ptr [ecx + 12], ebp",
-            in("cx") $buf_ptr, // Restored in long_jump_raw.
-            lateout("ax") $val,
-            lander = label $lander,
+            $($tt)*
 
             // Callee saved registers.
             // lateout("si") _, // LLVM reserved.
@@ -22,30 +13,62 @@ macro_rules! set_jump_raw {
             lateout("di") _,
             // Caller saved registers.
             clobber_abi("C"),
-            options(readonly),
         )
     };
-    ($val:expr, $buf_ptr:expr) => {
-        core::arch::asm!(
-            "lea eax, [3f]",
-            "mov dword ptr [ecx], eax",
-            "mov dword ptr [ecx + 4], esp",
-            "mov dword ptr [ecx + 8], esi",
-            "mov dword ptr [ecx + 12], ebp",
-            "xor eax, eax",
-            "3:",
-            in("cx") $buf_ptr, // Restored in long_jump_raw.
-            lateout("ax") $val,
+}
 
-            // Callee saved registers.
-            // lateout("si") _, // LLVM reserved.
-            // lateout("sp") _, // sp
-            // lateout("bp") _, // LLVM reserved.
-            lateout("bx") _,
-            lateout("di") _,
-            // Caller saved registers.
-            clobber_abi("C"),
-            options(readonly),
+macro_rules! set_jump_raw {
+    ($val:expr, $f:expr, $data:expr, $lander:block) => {
+        set_jump_raw_impl!(
+            "call 2f",
+            "2:",
+            ".cfi_adjust_cfa_offset 4",
+            "addl $({lander} - 2b), (%esp)",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl %esi",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl %ebp",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl %esp",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl {data}",
+            ".cfi_adjust_cfa_offset 4",
+            "call {f}",
+            "addl $20, %esp",
+            ".cfi_adjust_cfa_offset -20",
+
+            f = sym $f,
+            data = in(reg) $data,
+            out("ax") $val,
+            lander = label $lander,
+            // Workaround: <https://github.com/rust-lang/rust/issues/74558>
+            options(att_syntax),
+        )
+    };
+    ($val:expr, $f:expr, $data:expr) => {
+        set_jump_raw_impl!(
+            "call 2f",
+            "2:",
+            ".cfi_adjust_cfa_offset 4",
+            "addl $(3f - 2b), (%esp)",
+            "pushl %esi",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl %ebp",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl %esp",
+            ".cfi_adjust_cfa_offset 4",
+            "pushl {data}",
+            ".cfi_adjust_cfa_offset 4",
+            "call {f}",
+            "addl $20, %esp",
+            ".cfi_adjust_cfa_offset -20",
+            "3:",
+
+            f = sym $f,
+            data = in(reg) $data,
+            out("ax") $val,
+            // Workaround: <https://github.com/rust-lang/rust/issues/74558>
+            options(att_syntax),
         )
     };
 }
@@ -54,13 +77,14 @@ macro_rules! set_jump_raw {
 pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         core::arch::asm!(
-            "mov ebp, dword ptr [ecx + 12]",
-            "mov esi, dword ptr [ecx + 8]",
-            "mov esp, dword ptr [ecx + 4]",
-            "jmp dword ptr [ecx]",
-            in("cx") buf,
+            "mov edx, dword ptr [ecx - 4]",
+            "mov esi, dword ptr [ecx - 8]",
+            "mov ebp, dword ptr [ecx - 12]",
+            "mov esp, ecx",
+            "jmp edx",
+            in("cx") buf as usize + 12,
             in("ax") result.get(),
-            options(noreturn),
+            options(noreturn, nostack, readonly),
         )
     }
 }

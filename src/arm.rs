@@ -1,64 +1,58 @@
 use super::NonZero;
 
-pub(crate) type Buf = [*mut (); 4];
+macro_rules! set_jump_raw_impl {
+    ($($tt:tt)*) => {
+        core::arch::asm!(
+            $($tt)*
+
+            // Callee saved registers.
+            lateout("r4") _,
+            lateout("r5") _,
+            // lateout("r6") _, // LLVM reserved.
+            lateout("r7") _,
+            lateout("r8") _,
+            lateout("r9") _,
+            lateout("r10") _,
+            // lateout("r11") _, // LLVM reserved.
+            lateout("r12") _,
+            // lateout("sp") _, // sp
+            lateout("lr") _,
+            // Caller saved registers.
+            // FIXME: inline asm clobber list contains reserved registers: D16-D31.
+            clobber_abi("aapcs"),
+        )
+    }
+}
 
 macro_rules! set_jump_raw {
-    ($val:expr, $buf_ptr:expr, $lander:block) => {
-        core::arch::asm!(
+    ($val:expr, $f:expr, $data:expr, $lander:block) => {
+        set_jump_raw_impl!(
             "adr lr, {lander}",
-            "stm r1, {{r6, r11, sp, lr}}",
+            "push {{r6, r11, sp, lr}}",
+            ".cfi_adjust_cfa_offset 16",
+            "mov r1, sp",
+            "bl {f}",
+            "add sp, sp, 16",
+            ".cfi_adjust_cfa_offset -16",
 
+            f = sym $f,
+            inout("r0") $data => $val,
             lander = label $lander,
-
-            out("r0") $val,
-            in("r1") $buf_ptr, // Restored in long_jump_raw.
-
-            // Callee saved registers.
-            lateout("r4") _,
-            lateout("r5") _,
-            // lateout("r6") _, // LLVM reserved.
-            lateout("r7") _,
-            lateout("r8") _,
-            lateout("r9") _,
-            lateout("r10") _,
-            // lateout("r11") _, // LLVM reserved.
-            lateout("r12") _,
-            // lateout("sp") _, // sp
-            lateout("lr") _,
-
-            // Caller saved registers.
-            clobber_abi("aapcs"),
-            options(readonly),
         )
     };
-    ($val:expr, $buf_ptr:expr) => {
-        core::arch::asm!(
+    ($val:expr, $f:expr, $data:expr) => {
+        set_jump_raw_impl!(
             "adr lr, 2f",
-            "stm r1, {{r6, r11, sp, lr}}",
-            "mov r0, 0",
+            "push {{r6, r11, sp, lr}}",
+            ".cfi_adjust_cfa_offset 16",
+            "mov r1, sp",
+            "bl {f}",
+            "add sp, sp, 16",
+            ".cfi_adjust_cfa_offset -16",
             "2:",
 
-            // Caller saved registers.
-            // Workaround: see above.
-            out("r0") $val,
-            in("r1") $buf_ptr, // Restored in long_jump_raw.
-
-            // Callee saved registers.
-            lateout("r4") _,
-            lateout("r5") _,
-            // lateout("r6") _, // LLVM reserved.
-            lateout("r7") _,
-            lateout("r8") _,
-            lateout("r9") _,
-            lateout("r10") _,
-            // lateout("r11") _, // LLVM reserved.
-            lateout("r12") _,
-            // lateout("sp") _, // sp
-            lateout("lr") _,
-
-            // Caller saved registers.
-            clobber_abi("aapcs"),
-            options(readonly),
+            f = sym $f,
+            inout("r0") $data => $val,
         )
     };
 }
@@ -68,9 +62,9 @@ pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         core::arch::asm!(
             "ldm r1, {{r6, r11, sp, pc}}",
-            in("r1") buf,
             in("r0") result.get(),
-            options(noreturn),
+            in("r1") buf,
+            options(noreturn, nostack, readonly),
         )
     }
 }
