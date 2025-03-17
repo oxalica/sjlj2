@@ -308,17 +308,26 @@ where
         }
     }
 
-    unsafe extern "C" fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
-        data: &mut Data<T, F>,
-        jp: *mut (),
-    ) -> usize {
-        let guard = AbortGuard;
-        let f = unsafe { ManuallyDrop::take(&mut data.func) };
-        let ret = f(unsafe { JumpPoint::from_raw(jp) });
-        data.ret = ManuallyDrop::new(ret);
-        core::mem::forget(guard);
-        0
+    macro_rules! gen_wrap {
+        ($abi:literal) => {
+            unsafe extern $abi fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
+                data: &mut Data<T, F>,
+                jp: *mut (),
+            ) -> usize {
+                let guard = AbortGuard;
+                let f = unsafe { ManuallyDrop::take(&mut data.func) };
+                let ret = f(unsafe { JumpPoint::from_raw(jp) });
+                data.ret = ManuallyDrop::new(ret);
+                core::mem::forget(guard);
+                0
+            }
+        };
     }
+
+    #[cfg(target_arch = "x86_64")]
+    gen_wrap!("sysv64");
+    #[cfg(not(target_arch = "x86_64"))]
+    gen_wrap!("C");
 
     let mut data = Data::<T, F> {
         func: ManuallyDrop::new(ordinary),
