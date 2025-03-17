@@ -1,5 +1,6 @@
 //! Test DWARF information correctness by random sampling and unwinding.
 #![cfg(target_os = "linux")]
+use std::hint::black_box;
 use std::num::NonZero;
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,13 @@ fn dwarf_unwind() {
     while inst.elapsed() < TEST_DURATION {
         for _ in 0..CHUNK {
             let ret = set_jump(
-                |jp| unsafe { long_jump(jp, NonZero::new(13).unwrap()) },
+                |jp| {
+                    if black_box(true) {
+                        unsafe { long_jump(jp, NonZero::new(13).unwrap()) };
+                    } else {
+                        42
+                    }
+                },
                 |ret| ret.get() + 1,
             );
             assert_eq!(ret, 14);

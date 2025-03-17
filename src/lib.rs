@@ -102,6 +102,30 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::num::NonZero;
 
+// Overridable by the next definition, and can be unused on some targets.
+#[allow(unused_macros)]
+macro_rules! maybe_strip_cfi {
+    (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
+        $($head)* (
+            $($lit1,)*
+            $($cfi, $($lit2,)*)*
+            $($tail)*
+        )
+    };
+}
+
+// Windows targets do not support DWARF unwind info.
+#[cfg(all(windows, target_env = "msvc"))]
+macro_rules! maybe_strip_cfi {
+    (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
+        $($head)* (
+            $($lit1,)*
+            $($($lit2,)*)*
+            $($tail)*
+        )
+    };
+}
+
 #[cfg(target_arch = "x86_64")]
 #[macro_use]
 #[path = "./x86_64.rs"]
