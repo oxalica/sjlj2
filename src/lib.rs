@@ -67,7 +67,7 @@
 //!
 //!   ⚠️ Warning: `asm_goto_with_outputs` is [reported to be buggy][asm_goto_bug] in some cases. It
 //!   is unknown that if our code is affected. Do NOT enable this feature unless you accept the
-//!   risk. aarch64-apple-darwin is known to be buggy with this feature, thus is incompatible.
+//!   risk.
 //!
 //! [asm_goto_bug]: https://github.com/llvm/llvm-project/issues/74483
 //!

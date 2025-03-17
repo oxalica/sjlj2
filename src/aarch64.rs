@@ -29,13 +29,6 @@ macro_rules! set_jump_raw_impl {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "unstable-asm-goto"))]
-compile_error!(
-    "aarch64-apple-darwin with feature 'unstable-asm-goto' has known miscompilation bug \
-    caused by unrespected clobbered registers. More investigation is required. \
-    Please disable the feature for now."
-);
-
 #[cfg(target_os = "macos")]
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {

@@ -67,15 +67,15 @@ jobs:
         run: cargo test --release ${{ matrix.feat }} -- --include-ignored
 
       - name: Build asm-goto
-        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        if: matrix.rust == 'nightly'
         run: |
           cargo build --all-targets --features=unstable-asm-goto
           cargo build --all-targets --features=unstable-asm-goto --release
       - name: Test asm-goto
-        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        if: matrix.rust == 'nightly'
         run: cargo test --features=unstable-asm-goto
       - name: Test asm-goto release
-        if: matrix.rust == 'nightly' && matrix.os != 'macos-latest'
+        if: matrix.rust == 'nightly'
         run: cargo test --release --features=unstable-asm-goto -- --include-ignored
 
   test-exotic:
