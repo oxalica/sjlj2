@@ -3,7 +3,8 @@ use super::NonZero;
 #[cfg(not(target_os = "macos"))]
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             $($tt)*
 
             // Callee saved registers.
@@ -32,7 +33,8 @@ macro_rules! set_jump_raw_impl {
 #[cfg(target_os = "macos")]
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             $($tt)*
 
             // Callee saved registers.
@@ -63,13 +65,14 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "adr x2, {lander}",
             "stp x2, x2, [sp, #-16]!",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "stp x19, x29, [sp, #-16]!",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "mov x1, sp",
             "bl {f}",
             "add sp, sp, 32",
-            ".cfi_adjust_cfa_offset -32",
+            [".cfi_adjust_cfa_offset -32"],
+            [],
 
             f = sym $f,
             lander = label $lander,
@@ -80,14 +83,15 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "adr x2, 2f",
             "stp x2, x2, [sp, #-16]!",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "stp x19, x29, [sp, #-16]!",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "mov x1, sp",
             "bl {f}",
             "add sp, sp, 32",
-            ".cfi_adjust_cfa_offset -32",
+            [".cfi_adjust_cfa_offset -32"],
             "2:",
+            [],
 
             f = sym $f,
             inout("x0") $data => $val,
@@ -98,14 +102,17 @@ macro_rules! set_jump_raw {
 #[inline]
 pub(crate) unsafe fn long_jump_raw(jp: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             "ldp x19, x29, [x1]",
             "ldr x2, [x1, #16]",
             "add sp, x1, 32",
-            ".cfi_remember_state",
-            ".cfi_undefined lr",
+            [".cfi_remember_state"],
+            [".cfi_undefined lr"],
             "br x2",
-            ".cfi_restore_state",
+            [".cfi_restore_state"],
+            [],
+
             in("x0") result.get(),
             in("x1") jp,
             options(noreturn, nostack, readonly),

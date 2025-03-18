@@ -114,8 +114,8 @@ macro_rules! maybe_strip_cfi {
     };
 }
 
-// Windows targets do not support DWARF unwind info.
-#[cfg(all(windows, target_env = "msvc"))]
+// Windows do not use DWARF unwind info.
+#[cfg(windows)]
 macro_rules! maybe_strip_cfi {
     (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
         $($head)* (
