@@ -71,7 +71,7 @@
 //!
 //! [asm_goto_bug]: https://github.com/llvm/llvm-project/issues/74483
 //!
-//! ## Supported architecture
+//! ## Supported architectures
 //!
 //! - x86 (i686)
 //! - x86\_64
@@ -79,6 +79,8 @@
 //! - riscv32 (with and without E-extension)
 //! - aarch64 (ARMv8)
 //! - arm
+//!
+//! FIXME: i686-pc-windows-msvc is known to be crashy.
 //!
 //! ## Similar crates
 //!
