@@ -61,7 +61,7 @@ fn issue_2625() {
 }
 
 #[test]
-fn panic() {
+fn lander_panic() {
     let ret = catch_unwind(|| {
         JumpPoint::set_jump(
             |jp| unsafe { jp.long_jump(NonZero::new(40).unwrap()) },
@@ -70,6 +70,20 @@ fn panic() {
     });
     let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
     assert_eq!(payload, 42usize);
+}
+
+// Test DWARF state restoration.
+#[test]
+fn after_panic() {
+    let ret = catch_unwind(|| {
+        JumpPoint::set_jump(
+            |jp| unsafe { jp.long_jump(NonZero::new(1).unwrap()) },
+            |v| v.get() + 1,
+        );
+        panic_any(13usize);
+    });
+    let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
+    assert_eq!(payload, 13usize);
 }
 
 // <https://github.com/rust-lang/libc/issues/1596>
