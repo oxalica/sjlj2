@@ -87,26 +87,20 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: |
-          cargo build --all-targets
-          cargo build --all-targets --release
       - name: Test
-        run: cargo test ${{ matrix.feat }}
-      - name: Test release
-        run: cargo test --release ${{ matrix.feat }} -- --include-ignored
-
-      - name: Build asm-goto
-        if: matrix.rust == 'nightly'
         run: |
-          cargo build --all-targets --features=unstable-asm-goto
-          cargo build --all-targets --features=unstable-asm-goto --release
+          for flags in {,--features=unwind}' '{,'--release -- --include-ignored'}; do
+            echo RUN cargo test $flags
+            cargo test $flags
+          done
+
       - name: Test asm-goto
         if: matrix.rust == 'nightly'
-        run: cargo test --features=unstable-asm-goto
-      - name: Test asm-goto release
-        if: matrix.rust == 'nightly'
-        run: cargo test --release --features=unstable-asm-goto -- --include-ignored
+        run: |
+          for flags in '--features=unstable-asm-goto'{,',unwind'}' '{,'--release -- --include-ignored'}; do
+            echo RUN cargo test $flags
+            cargo test $flags
+          done
 
   test-exotic:
     needs: code-style
@@ -185,11 +179,9 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: |
-          cargo build --all-targets
-          cargo build --all-targets --release
       - name: Test
-        run: cargo test
-      - name: Test release
-        run: cargo test --release -- --include-ignored
+        run: |
+          for flags in {,--features=unwind}' '{,'--release -- --include-ignored'}; do
+            echo RUN cargo test $flags
+            cargo test $flags
+          done
