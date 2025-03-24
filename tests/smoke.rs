@@ -60,6 +60,16 @@ fn issue_2625() {
     assert_eq!(foo(), (13, 2));
 }
 
+#[cfg(feature = "unwind")]
+#[test]
+fn ordinary_panic() {
+    let ret = catch_unwind(|| {
+        JumpPoint::set_jump(|_jp| panic_any(42usize), |_| unreachable!());
+    });
+    let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
+    assert_eq!(payload, 42usize);
+}
+
 #[test]
 fn lander_panic() {
     let ret = catch_unwind(|| {
