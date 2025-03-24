@@ -23,14 +23,14 @@
 //! - Minimal memory and performance footprint.
 //!
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
-//!   all callee-saved registers. Inline-able `set_jump` without procedure call cost.
+//!   all callee-saved registers. Inline-able `set_jump` and `long_jump`.
 //!
 //!   - 2.4ns `set_jump` setup and 2.9ns `long_jump` on a modern x86\_64 CPU.
 //!     ~300-490x faster than `catch_unwind`-`panic_any!`.
 //!
-//! - No std.
+//! - `no_std` support.
 //!
-//!   This crate is `#[no_std]` and does not use `alloc` either.
+//!   By default, this crate is `#![no_std]` and does not use `alloc` either.
 //!   It is suitable for embedded environment.
 //!
 //! ```
@@ -61,7 +61,12 @@
 //!
 //! ## Features
 //!
-//! - `unstable-asm-goto`: enable use of `asm_goto` and `asm_goto_with_outputs` unstable features.
+//! No feature is enabled by default.
+//!
+//! - `unwind`: Enables unwinding across [`set_jump`] boundary from its `ordinary` closure, by
+//!   catching and resuming it. This feature requires `std`.
+//!
+//! - `unstable-asm-goto`: Enables uses of `asm_goto` and `asm_goto_with_outputs` unstable features.
 //!
 //!   This requires a nightly rustc, but produces more optimal code with one-less conditional jump.
 //!
@@ -99,7 +104,7 @@
 //! [misopt]: https://github.com/rust-lang/rfcs/issues/2625
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(any(test, feature = "unwind")), no_std)]
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::num::NonZero;
@@ -260,7 +265,7 @@ impl JumpPoint<'_> {
 /// Since it is implemented with [`core::mem::needs_drop`], it may generates false positive
 /// compile errors.
 ///
-/// This function is inline-able but `ordinary` is called in a C function wrapper because it must
+/// This function is inline-able but `ordinary` is called via a function wrapper because it must
 /// has its own stack frame to avoid [misoptimization][misopt2].
 ///
 /// [misopt2]: https://github.com/rust-lang/libc/issues/1596
@@ -271,14 +276,35 @@ impl JumpPoint<'_> {
 ///
 /// # Panics
 ///
-/// It is allowed to panic in `ordinary` or `lander` closure. But panics in `ordinary` cannot
-/// unwind across `set_jump`, or it will abort the process.
-/// Panics in `lander` can unwind across `set_jump` though.
+/// It is allowed to panic in `ordinary` or `lander` closure.
+/// But panics from `ordinary` will cause an abort, unless feature `unwind` is enabled, then the
+/// panic will be caught and resumed to cross `set_jump` boundary.
+///
+/// Panics in `lander` can always unwind across `set_jump`.
 #[doc(alias = "setjmp")]
 #[inline]
+pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
+where
+    F: FnOnce(JumpPoint<'_>) -> T,
+    G: FnOnce(NonZero<usize>) -> T,
+{
+    #[cfg(feature = "unwind")]
+    match set_jump_no_unwind(
+        move |jp| std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || ordinary(jp))),
+        move |val| Ok(lander(val)),
+    ) {
+        Ok(ret) => ret,
+        Err(err) => std::panic::resume_unwind(err),
+    }
+
+    #[cfg(not(feature = "unwind"))]
+    set_jump_no_unwind(ordinary, lander)
+}
+
 // For better logical order.
 #[allow(clippy::items_after_statements)]
-pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
+#[inline]
+fn set_jump_no_unwind<T, F, G>(ordinary: F, lander: G) -> T
 where
     F: FnOnce(JumpPoint<'_>) -> T,
     G: FnOnce(NonZero<usize>) -> T,
