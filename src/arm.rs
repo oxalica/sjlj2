@@ -2,7 +2,8 @@ use super::NonZero;
 
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             $($tt)*
 
             // Callee saved registers.
@@ -29,11 +30,12 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "adr lr, {lander}",
             "push {{r6, r11, sp, lr}}",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "mov r1, sp",
             "bl {f}",
             "add sp, sp, 16",
-            ".cfi_adjust_cfa_offset -16",
+            [".cfi_adjust_cfa_offset -16"],
+            [],
 
             f = sym $f,
             inout("r0") $data => $val,
@@ -44,12 +46,13 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "adr lr, 2f",
             "push {{r6, r11, sp, lr}}",
-            ".cfi_adjust_cfa_offset 16",
+            [".cfi_adjust_cfa_offset 16"],
             "mov r1, sp",
             "bl {f}",
             "add sp, sp, 16",
-            ".cfi_adjust_cfa_offset -16",
+            [".cfi_adjust_cfa_offset -16"],
             "2:",
+            [],
 
             f = sym $f,
             inout("r0") $data => $val,

@@ -2,7 +2,8 @@ use super::NonZero;
 
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             $($tt)*
 
             // Callee saved registers.
@@ -43,14 +44,15 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "la a1, {lander}",
             "addi sp, sp, -32",
-            ".cfi_adjust_cfa_offset 32",
+            [".cfi_adjust_cfa_offset 32"],
             "sd a1, (sp)",
             "sd s0, 8(sp)",
             "sd s1, 16(sp)",
             "mv a1, sp",
             "call {f}",
             "addi sp, sp, 32",
-            ".cfi_adjust_cfa_offset -32",
+            [".cfi_adjust_cfa_offset -32"],
+            [],
 
             f = sym $f,
             inout("a0") $data => $val,
@@ -61,15 +63,16 @@ macro_rules! set_jump_raw {
         set_jump_raw_impl!(
             "la a1, 2f",
             "addi sp, sp, -32",
-            ".cfi_adjust_cfa_offset 32",
+            [".cfi_adjust_cfa_offset 32"],
             "sd a1, (sp)",
             "sd s0, 8(sp)",
             "sd s1, 16(sp)",
             "mv a1, sp",
             "call {f}",
             "addi sp, sp, 32",
-            ".cfi_adjust_cfa_offset -32",
+            [".cfi_adjust_cfa_offset -32"],
             "2:",
+            [],
 
             f = sym $f,
             inout("a0") $data => $val,
@@ -80,15 +83,17 @@ macro_rules! set_jump_raw {
 #[inline]
 pub(crate) unsafe fn long_jump_raw(jp: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
-        core::arch::asm!(
+        maybe_strip_cfi!(
+            (core::arch::asm!),
             "ld a2, 0(a1)",
             "ld s0, 8(a1)",
             "ld s1, 16(a1)",
             "addi sp, a1, 32",
-            ".cfi_remember_state",
-            ".cfi_undefined ra",
+            [".cfi_remember_state"],
+            [".cfi_undefined ra"],
             "jalr x0, a2",
-            ".cfi_restore_state",
+            [".cfi_restore_state"],
+            [],
             in("a0") result.get(),
             in("a1") jp,
             options(noreturn, nostack, readonly),

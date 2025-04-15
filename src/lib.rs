@@ -122,7 +122,7 @@ macro_rules! maybe_strip_cfi {
 }
 
 // Windows do not use DWARF unwind info.
-#[cfg(windows)]
+#[cfg(any(windows, panic = "abort"))]
 macro_rules! maybe_strip_cfi {
     (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
         $($head)* (
