@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## v0.3.1
+
+### Fixed
+
+- Fixed build failure with debug=false and panic=abort, by omitting CFI
+  directives on panic=abort (#1).
+
 ## v0.3.0
 
 ### Changed
