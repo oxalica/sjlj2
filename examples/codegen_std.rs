@@ -28,5 +28,3 @@ extern "C" fn codegen_must_jump() -> usize {
         |v| v.get() + 1,
     )
 }
-
-fn main() {}

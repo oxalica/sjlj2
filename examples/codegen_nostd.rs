@@ -1,7 +1,6 @@
 //! For manual inspection.
 // Workaround: examples are build with std when running `cargo test`. Ignore no_std in that case.
 #![cfg_attr(not(feature = "default"), no_std)]
-#![cfg_attr(not(feature = "default"), no_main)]
 
 use core::num::NonZero;
 
@@ -38,5 +37,3 @@ extern "C" fn codegen_must_jump() -> usize {
         |v| v.get() + 1,
     )
 }
-
-fn main() {}

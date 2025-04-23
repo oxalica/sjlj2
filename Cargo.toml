@@ -31,6 +31,14 @@ pprof = { version = "0.14.0", default-features = false }
 name = "bench"
 harness = false
 
+[[example]]
+name = "codegen_std"
+crate-type = ["staticlib"]
+
+[[example]]
+name = "codegen_nostd"
+crate-type = ["staticlib"]
+
 [profile.release]
 debug = "line-tables-only"
 
