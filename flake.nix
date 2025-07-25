@@ -7,7 +7,7 @@
     let
       inherit (nixpkgs) lib;
       eachSystem = lib.genAttrs lib.systems.flakeExposed;
-      date = "2025-03-01";
+      date = "2025-07-01";
     in
     {
       devShells = eachSystem (
