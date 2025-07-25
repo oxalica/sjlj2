@@ -1,10 +1,18 @@
 use super::NonZero;
 
-macro_rules! set_jump_raw_impl {
-    ($($tt:tt)*) => {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
-            $($tt)*
+// result, r6, r11, sp, lander
+pub(crate) struct Buf(pub [usize; 5]);
+
+macro_rules! set_jump_raw {
+    ($buf_ptr:expr, $func:expr, $lander:block) => {
+        core::arch::asm!(
+            "adr lr, {lander}",
+            "stm r0, {{r0, r6, r11, sp, lr}}",
+            "bl {func}",
+
+            in("r0") $buf_ptr, // arg0
+            func = sym $func,
+            lander = label $lander,
 
             // Callee saved registers.
             lateout("r4") _,
@@ -22,41 +30,6 @@ macro_rules! set_jump_raw_impl {
             // FIXME: inline asm clobber list contains reserved registers: D16-D31.
             clobber_abi("aapcs"),
         )
-    }
-}
-
-macro_rules! set_jump_raw {
-    ($val:expr, $f:expr, $data:expr, $lander:block) => {
-        set_jump_raw_impl!(
-            "adr lr, {lander}",
-            "push {{r6, r11, sp, lr}}",
-            [".cfi_adjust_cfa_offset 16"],
-            "mov r1, sp",
-            "bl {f}",
-            "add sp, sp, 16",
-            [".cfi_adjust_cfa_offset -16"],
-            [],
-
-            f = sym $f,
-            inout("r0") $data => $val,
-            lander = label $lander,
-        )
-    };
-    ($val:expr, $f:expr, $data:expr) => {
-        set_jump_raw_impl!(
-            "adr lr, 2f",
-            "push {{r6, r11, sp, lr}}",
-            [".cfi_adjust_cfa_offset 16"],
-            "mov r1, sp",
-            "bl {f}",
-            "add sp, sp, 16",
-            [".cfi_adjust_cfa_offset -16"],
-            "2:",
-            [],
-
-            f = sym $f,
-            inout("r0") $data => $val,
-        )
     };
 }
 
@@ -64,7 +37,8 @@ macro_rules! set_jump_raw {
 pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         core::arch::asm!(
-            "ldm r1, {{r6, r11, sp, pc}}",
+            "str r0, [r1]",
+            "ldm r1, {{r0, r6, r11, sp, pc}}",
             in("r0") result.get(),
             in("r1") buf,
             options(noreturn, nostack, readonly),
