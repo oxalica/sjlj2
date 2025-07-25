@@ -91,7 +91,7 @@ jobs:
         run: |
           for flags in {,--features=unwind}' '{,'--release -- --include-ignored'}; do
             echo RUN cargo test $flags
-            cargo test $flags
+            cargo test $flags -- --test-threads 1
           done
 
   test-exotic:
