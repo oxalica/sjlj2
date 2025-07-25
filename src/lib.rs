@@ -66,16 +66,6 @@
 //! - `unwind`: Enables unwinding across [`set_jump`] boundary from its `ordinary` closure, by
 //!   catching and resuming it. This feature requires `std`.
 //!
-//! - `unstable-asm-goto`: Enables uses of `asm_goto` and `asm_goto_with_outputs` unstable features.
-//!
-//!   This requires a nightly rustc, but produces more optimal code with one-less conditional jump.
-//!
-//!   ⚠️ Warning: `asm_goto_with_outputs` is [reported to be buggy][asm_goto_bug] in some cases. It
-//!   is unknown that if our code is affected. Do NOT enable this feature unless you accept the
-//!   risk.
-//!
-//! [asm_goto_bug]: https://github.com/llvm/llvm-project/issues/74483
-//!
 //! ## Supported architectures
 //!
 //! - x86 (i686)
@@ -102,8 +92,6 @@
 //!   - Slower `long_jump` because of more register restoring.
 //!
 //! [misopt]: https://github.com/rust-lang/rfcs/issues/2625
-#![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto))]
-#![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(any(test, feature = "unwind")), no_std)]
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
