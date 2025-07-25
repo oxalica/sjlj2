@@ -10,7 +10,7 @@ repository = "https://github.com/oxalica/sjlj2"
 license = "MIT OR Apache-2.0"
 exclude = ["flake.nix", "flake.lock"]
 # NB. Sync with CI!
-rust-version = "1.79" # NonZero<T>, const blocks
+rust-version = "1.87" # asm_goto
 
 [features]
 default = []

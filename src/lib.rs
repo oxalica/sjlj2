@@ -106,7 +106,7 @@
 #![cfg_attr(feature = "unstable-asm-goto", feature(asm_goto_with_outputs))]
 #![cfg_attr(not(any(test, feature = "unwind")), no_std)]
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::num::NonZero;
 
 // Overridable by the next definition, and can be unused on some targets.
@@ -322,9 +322,14 @@ where
         // unwind between its return from F or G and the return from `set_jump`.
     }
 
-    union Data<T, F> {
+    // NB: Properties expected by ASM:
+    // - `jmp_buf` is at offset 0.
+    // - On the exceptional path, the carried value is stored in `jmp_buf[0]`.
+    #[repr(C)]
+    struct Data<T, F> {
+        jmp_buf: MaybeUninit<imp::Buf>,
         func: ManuallyDrop<F>,
-        ret: ManuallyDrop<T>,
+        ret: MaybeUninit<T>,
     }
 
     struct AbortGuard;
@@ -340,43 +345,44 @@ where
         ($abi:literal) => {
             unsafe extern $abi fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
                 data: &mut Data<T, F>,
-                jp: *mut (),
             ) -> usize {
                 let guard = AbortGuard;
-                let f = unsafe { ManuallyDrop::take(&mut data.func) };
-                let ret = f(unsafe { JumpPoint::from_raw(jp) });
-                data.ret = ManuallyDrop::new(ret);
+                let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
+                let ret = unsafe { ManuallyDrop::take(&mut data.func)(jp) };
+                data.ret.write(ret);
                 core::mem::forget(guard);
                 0
             }
         };
     }
 
+    // Linux and Windows have different C ABI. Here we choose sysv64 for simplicity.
     #[cfg(target_arch = "x86_64")]
     gen_wrap!("sysv64");
-    #[cfg(not(target_arch = "x86_64"))]
+
+    // x86 cdecl pass all arguments on stack, which is inconvenient under the
+    // fact that compilers also disagree on stack alignments.
+    // Here we choose fastcall to pass through ECX for simplicity.
+    #[cfg(target_arch = "x86")]
+    gen_wrap!("fastcall");
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
     gen_wrap!("C");
 
     let mut data = Data::<T, F> {
+        jmp_buf: MaybeUninit::uninit(),
         func: ManuallyDrop::new(ordinary),
+        ret: MaybeUninit::uninit(),
     };
-    let val: usize;
 
-    #[cfg(feature = "unstable-asm-goto")]
     unsafe {
-        set_jump_raw!(val, wrap::<T, F>, &mut data, {
-            unsafe { return lander(NonZero::new_unchecked(val)) }
+        set_jump_raw!(&mut data, wrap::<T, F>, {
+            unsafe {
+                let val = NonZero::new_unchecked(data.jmp_buf.assume_init().0[0]);
+                return lander(val);
+            }
         });
-        ManuallyDrop::take(&mut data.ret)
-    }
-
-    #[cfg(not(feature = "unstable-asm-goto"))]
-    {
-        unsafe { set_jump_raw!(val, wrap::<T, F>, &mut data) };
-        match NonZero::new(val) {
-            None => unsafe { ManuallyDrop::take(&mut data.ret) },
-            Some(v) => lander(v),
-        }
+        data.ret.assume_init()
     }
 }
 

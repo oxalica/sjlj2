@@ -1,9 +1,12 @@
 use super::NonZero;
 
+// s0, s1, sp, lander
+#[repr(transparent)]
+pub(crate) struct Buf(pub [usize; 4]);
+
 macro_rules! set_jump_raw_impl {
     ($($tt:tt)*) => {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
+        core::arch::asm!(
             $($tt)*
 
             // Callee saved registers.
@@ -40,42 +43,18 @@ macro_rules! set_jump_raw_impl {
 }
 
 macro_rules! set_jump_raw {
-    ($val:expr, $f:expr, $data:expr, $lander:block) => {
+    ($buf_ptr:expr, $func:expr, $lander:block) => {
         set_jump_raw_impl!(
             "la a1, {lander}",
-            "addi sp, sp, -32",
-            [".cfi_adjust_cfa_offset 32"],
-            "sd a1, (sp)",
-            "sd s0, 8(sp)",
-            "sd s1, 16(sp)",
-            "mv a1, sp",
-            "call {f}",
-            "addi sp, sp, 32",
-            [".cfi_adjust_cfa_offset -32"],
-            [],
+            "sd s0,   (a0)",
+            "sd s1,  8(a0)",
+            "sd sp, 16(a0)",
+            "sd a1, 24(a0)",
+            "call {func}",
 
-            f = sym $f,
-            inout("a0") $data => $val,
+            in("a0") $buf_ptr, // arg0
+            func = sym $func,
             lander = label $lander,
-        )
-    };
-    ($val:expr, $f:expr, $data:expr) => {
-        set_jump_raw_impl!(
-            "la a1, 2f",
-            "addi sp, sp, -32",
-            [".cfi_adjust_cfa_offset 32"],
-            "sd a1, (sp)",
-            "sd s0, 8(sp)",
-            "sd s1, 16(sp)",
-            "mv a1, sp",
-            "call {f}",
-            "addi sp, sp, 32",
-            [".cfi_adjust_cfa_offset -32"],
-            "2:",
-            [],
-
-            f = sym $f,
-            inout("a0") $data => $val,
         )
     };
 }
@@ -85,18 +64,19 @@ pub(crate) unsafe fn long_jump_raw(jp: *mut (), result: NonZero<usize>) -> ! {
     unsafe {
         maybe_strip_cfi!(
             (core::arch::asm!),
-            "ld a2, 0(a1)",
-            "ld s0, 8(a1)",
-            "ld s1, 16(a1)",
-            "addi sp, a1, 32",
             [".cfi_remember_state"],
             [".cfi_undefined ra"],
+            "ld s0,   (a0)",
+            "sd a1,   (a0)",
+            "ld s1,  8(a0)",
+            "ld sp, 16(a0)",
+            "ld a2, 24(a0)",
             "jalr x0, a2",
             [".cfi_restore_state"],
             [],
-            in("a0") result.get(),
-            in("a1") jp,
-            options(noreturn, nostack, readonly),
+            in("a0") jp,
+            in("a1") result.get(),
+            options(noreturn, nostack),
         )
     }
 }
