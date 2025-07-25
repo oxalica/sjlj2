@@ -376,7 +376,7 @@ where
     };
 
     unsafe {
-        set_jump_raw!(&mut data, wrap::<T, F>, {
+        set_jump_raw!(&raw mut data, wrap::<T, F>, {
             unsafe {
                 let val = NonZero::new_unchecked(data.jmp_buf.assume_init().0[0]);
                 return lander(val);
