@@ -16,9 +16,6 @@ rust-version = "1.87" # asm_goto
 default = []
 unwind = []
 
-# Uses unstable rustc features.
-unstable-asm-goto = []
-
 [dependencies]
 
 [dev-dependencies]

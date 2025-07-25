@@ -94,14 +94,6 @@ jobs:
             cargo test $flags
           done
 
-      - name: Test asm-goto
-        if: matrix.rust == 'nightly'
-        run: |
-          for flags in '--features=unstable-asm-goto'{,',unwind'}' '{,'--release -- --include-ignored'}; do
-            echo RUN cargo test $flags
-            cargo test $flags
-          done
-
   test-exotic:
     needs: code-style
     timeout-minutes: 15
@@ -148,8 +140,6 @@ jobs:
         run: |
           nix develop --command cargo build $CARGO_ARGS
           nix develop --command cargo build $CARGO_ARGS --release
-          nix develop --command cargo build $CARGO_ARGS --features=unstable-asm-goto
-          nix develop --command cargo build $CARGO_ARGS --features=unstable-asm-goto --release
 
       - name: Test
         if: ${{ !matrix.nostd }}
@@ -157,12 +147,6 @@ jobs:
       - name: Test release
         if: ${{ !matrix.nostd }}
         run: nix develop --command cargo test --release
-      - name: Test asm-goto
-        if: ${{ !matrix.nostd }}
-        run: nix develop --command cargo test --features=unstable-asm-goto
-      - name: Test asm-goto release
-        if: ${{ !matrix.nostd }}
-        run: nix develop --command cargo test --features=unstable-asm-goto --release
 
   msrv:
     name: MSRV
