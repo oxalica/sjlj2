@@ -94,6 +94,7 @@
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::num::NonZero;
+use core::ops::ControlFlow;
 
 // Overridable by the next definition, and can be unused on some targets.
 #[allow(unused_macros)]
@@ -251,27 +252,26 @@ impl JumpPoint<'_> {
 /// If a long jump is issued on the checkpoint inside execution of `ordinary`, control flow goes
 /// back, execute `lander` and return its result from `set_jump`.
 ///
-/// `ordinary` and `lander` must not have significant `Drop`, otherwise a compile error is
-/// generated. The call frame cannot be POF if any of them has a significant `Drop` impl.
-/// Since it is implemented with [`core::mem::needs_drop`], it may generates false positive
-/// compile errors.
+/// # Precondition
 ///
-/// This function is inline-able but `ordinary` is called via a function wrapper because it must
-/// has its own stack frame to avoid [misoptimization][misopt2].
-///
-/// [misopt2]: https://github.com/rust-lang/libc/issues/1596
+/// `ordinary` closure must not have a significant `Drop`, or the call frame cannot be POF.
+/// We did a best-effort detection for this with [`core::mem::needs_drop`] and a
+/// compiler error will be generated for `ordinary` with significant `Drop`.
+/// It may (but practically never) generates false positive compile errors.
 ///
 /// # Safety
 ///
-/// Yes, this function is actually safe to use. [`long_jump`] is unsafe, however.
+/// Yes, this function is safe to call. [`long_jump`] is unsafe, however.
 ///
 /// # Panics
 ///
-/// It is allowed to panic in `ordinary` or `lander` closure.
-/// But panics from `ordinary` will cause an abort, unless feature `unwind` is enabled, then the
-/// panic will be caught and resumed to cross `set_jump` boundary.
+/// It is safe to panic (unwind) in `ordinary` but the behavior varies:
+/// - If cargo feature `unwind` is enabled, panic will be caught, passed through
+///   `set_jump` boundary and resumed.
+/// - Otherwise,  it aborts the process.
 ///
-/// Panics in `lander` can always unwind across `set_jump`.
+/// `lander` or `Drop` of `T` can panic, because they are executed
+/// outside the `set_jump` boundary.
 #[doc(alias = "setjmp")]
 #[inline]
 pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
@@ -279,69 +279,53 @@ where
     F: FnOnce(JumpPoint<'_>) -> T,
     G: FnOnce(NonZero<usize>) -> T,
 {
+    let mut ret = MaybeUninit::uninit();
+
     #[cfg(feature = "unwind")]
-    match set_jump_no_unwind(
-        move |jp| std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || ordinary(jp))),
-        move |val| Ok(lander(val)),
-    ) {
-        Ok(ret) => ret,
-        Err(err) => std::panic::resume_unwind(err),
+    match set_jump_impl(|jp| {
+        ret.write(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || ordinary(jp),
+        )));
+    }) {
+        // SAFETY: `ordinary` returns normally or caught a panic, thus `ret` is initialized.
+        ControlFlow::Continue(()) => match unsafe { ret.assume_init() } {
+            Ok(ret) => ret,
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+        ControlFlow::Break(val) => lander(val),
     }
 
     #[cfg(not(feature = "unwind"))]
-    set_jump_no_unwind(ordinary, lander)
+    match set_jump_impl(|jp| {
+        ret.write(ordinary(jp));
+    }) {
+        // SAFETY: `ordinary` returns normally, thus `ret` is initialized.
+        ControlFlow::Continue(()) => unsafe { ret.assume_init() },
+        ControlFlow::Break(val) => lander(val),
+    }
 }
 
-// For better logical order.
-#[allow(clippy::items_after_statements)]
 #[inline]
-fn set_jump_no_unwind<T, F, G>(ordinary: F, lander: G) -> T
+fn set_jump_impl<F>(ordinary: F) -> ControlFlow<NonZero<usize>>
 where
-    F: FnOnce(JumpPoint<'_>) -> T,
-    G: FnOnce(NonZero<usize>) -> T,
+    F: FnOnce(JumpPoint<'_>),
 {
-    const {
-        assert!(
-            !core::mem::needs_drop::<F>(),
-            "set_jump closures must not have significant Drop",
-        );
-        assert!(
-            !core::mem::needs_drop::<G>(),
-            "set_jump closures must not have significant Drop",
-        );
-        // `T` can have `Drop` impl because when it is returned, there are no more user code can
-        // unwind between its return from F or G and the return from `set_jump`.
-    }
-
     // NB: Properties expected by ASM:
     // - `jmp_buf` is at offset 0.
     // - On the exceptional path, the carried value is stored in `jmp_buf[0]`.
     #[repr(C)]
-    struct Data<T, F> {
+    struct Data<F> {
         jmp_buf: MaybeUninit<imp::Buf>,
         func: ManuallyDrop<F>,
-        ret: MaybeUninit<T>,
-    }
-
-    struct AbortGuard;
-    impl Drop for AbortGuard {
-        fn drop(&mut self) {
-            // Manually trigger a double-panic abort.
-            // Workaround: <https://github.com/rust-lang/rust/issues/67952>
-            panic!("panic cannot unwind across set_jump");
-        }
     }
 
     macro_rules! gen_wrap {
         ($abi:literal) => {
-            unsafe extern $abi fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
-                data: &mut Data<T, F>,
-            ) -> usize {
-                let guard = AbortGuard;
+            unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) -> usize {
+                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV 1.87.
+                // No need to handle unwinding here.
                 let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
-                let ret = unsafe { ManuallyDrop::take(&mut data.func)(jp) };
-                data.ret.write(ret);
-                core::mem::forget(guard);
+                unsafe { ManuallyDrop::take(&mut data.func)(jp) };
                 0
             }
         };
@@ -360,20 +344,26 @@ where
     #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
     gen_wrap!("C");
 
-    let mut data = Data::<T, F> {
+    const {
+        assert!(
+            !core::mem::needs_drop::<F>(),
+            "set_jump closures must not have a significant Drop",
+        );
+    }
+
+    let mut data = Data::<F> {
         jmp_buf: MaybeUninit::uninit(),
         func: ManuallyDrop::new(ordinary),
-        ret: MaybeUninit::uninit(),
     };
 
     unsafe {
-        set_jump_raw!(&raw mut data, wrap::<T, F>, {
+        set_jump_raw!(&raw mut data, wrap::<F>, {
             unsafe {
                 let val = NonZero::new_unchecked(data.jmp_buf.assume_init().0[0]);
-                return lander(val);
+                return ControlFlow::Break(val);
             }
         });
-        data.ret.assume_init()
+        ControlFlow::Continue(())
     }
 }
 
