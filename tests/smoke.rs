@@ -1,5 +1,4 @@
 use std::hint::black_box;
-use std::num::NonZero;
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, panic_any};
 use std::ptr::read_volatile;
@@ -15,8 +14,12 @@ fn smoke() {
     let ret = catch_long_jump(move |_| capture + 1);
     assert_eq!(ret, ControlFlow::Continue(43));
 
-    let ret = catch_long_jump(|jp| unsafe { jp.long_jump(NonZero::new(13).unwrap()) });
-    assert_eq!(ret, ControlFlow::Break(NonZero::new(13).unwrap()));
+    let ret = catch_long_jump(|jp| unsafe { jp.long_jump(13) });
+    assert_eq!(ret, ControlFlow::Break(13));
+
+    // Unlike C, we handle zero correctly.
+    let ret = catch_long_jump(|jp| unsafe { jp.long_jump(0) });
+    assert_eq!(ret, ControlFlow::Break(0));
 }
 
 #[test]
@@ -29,14 +32,14 @@ fn issue_2625() {
             // Step 1: x is modified
             x = 13;
             // Step 2: jumps to Step 0 returning 1
-            unsafe { jp.long_jump(NonZero::new(1).unwrap()) };
+            unsafe { jp.long_jump(1) };
         });
         match ret {
             ControlFlow::Continue(()) => unreachable!(),
             // Step 3: when setjmp returns 1, x has always been
             // modified to be == 13 so this should always return 13:
             ControlFlow::Break(y) => {
-                let y = y.get() + 1;
+                let y = y + 1;
                 // The optimizer must not assume `x` is unchanged in the long_jump lander path.
                 (x, y)
             }
@@ -60,7 +63,7 @@ fn resume_panic() {
 #[test]
 fn after_panic() {
     let ret = catch_unwind(|| {
-        let _ = catch_long_jump(|jp| unsafe { jp.long_jump(NonZero::new(1).unwrap()) });
+        let _ = catch_long_jump(|jp| unsafe { jp.long_jump(1) });
         panic_any(13usize);
     });
     let payload = *ret.unwrap_err().downcast::<usize>().unwrap();
@@ -132,7 +135,7 @@ fn libc_issue_1596() {
             black_box(b17);
             black_box(b18);
             black_box(b19);
-            unsafe { jp.long_jump(NonZero::new(1).unwrap()) }
+            unsafe { jp.long_jump(1) }
         });
         [
             a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18,

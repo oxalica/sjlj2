@@ -1,5 +1,3 @@
-use super::NonZero;
-
 // si, sp, bp, lander
 #[repr(transparent)]
 pub(crate) struct Buf(pub [usize; 4]);
@@ -36,7 +34,7 @@ macro_rules! set_jump_raw {
 }
 
 #[inline]
-pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
+pub(crate) unsafe fn long_jump_raw(buf: *mut (), data: usize) -> ! {
     unsafe {
         maybe_strip_cfi!(
             (core::arch::asm!),
@@ -52,7 +50,7 @@ pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
             [],
 
             in("cx") buf,
-            in("ax") result.get(),
+            in("ax") data,
             options(noreturn, nostack),
         )
     }

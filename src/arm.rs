@@ -1,5 +1,3 @@
-use super::NonZero;
-
 // result, r6, r11, sp, lander
 pub(crate) struct Buf(pub [usize; 5]);
 
@@ -34,12 +32,12 @@ macro_rules! set_jump_raw {
 }
 
 #[inline]
-pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
+pub(crate) unsafe fn long_jump_raw(buf: *mut (), data: usize) -> ! {
     unsafe {
         core::arch::asm!(
             "str r0, [r1]",
             "ldm r1, {{r0, r6, r11, sp, pc}}",
-            in("r0") result.get(),
+            in("r0") data,
             in("r1") buf,
             options(noreturn, nostack, readonly),
         )

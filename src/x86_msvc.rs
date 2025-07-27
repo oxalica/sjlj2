@@ -2,7 +2,6 @@
 //! save/restore the runtime SEH chain.
 //! Otherwise, `long_jmp` from `catch_unwind` in the ordinary path will leave
 //! the SEH chain un-restored, causing any later exception segfaults.
-use super::NonZero;
 
 // si, sp, bp, lander, SEH head
 #[repr(transparent)]
@@ -42,7 +41,7 @@ macro_rules! set_jump_raw {
 }
 
 #[inline]
-pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
+pub(crate) unsafe fn long_jump_raw(buf: *mut (), data: usize) -> ! {
     unsafe {
         maybe_strip_cfi!(
             (core::arch::asm!),
@@ -60,7 +59,7 @@ pub(crate) unsafe fn long_jump_raw(buf: *mut (), result: NonZero<usize>) -> ! {
             [],
 
             in("cx") buf,
-            in("ax") result.get(),
+            in("ax") data,
             options(noreturn, nostack),
         )
     }

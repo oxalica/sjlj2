@@ -1,5 +1,4 @@
 use std::hint::black_box;
-use std::num::NonZero;
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, resume_unwind};
 
@@ -39,12 +38,12 @@ fn bench_sjlj(c: &mut Criterion) {
             b.iter(|| {
                 let ret = match catch_long_jump(move |jp| {
                     if jump {
-                        nest(lvl, &|| unsafe { jp.long_jump(NonZero::new(13).unwrap()) });
+                        nest(lvl, &|| unsafe { jp.long_jump(13) });
                     }
                     42usize
                 }) {
                     ControlFlow::Continue(ret) => ret,
-                    ControlFlow::Break(data) => data.get() + 1,
+                    ControlFlow::Break(data) => data + 1,
                 };
                 assert_eq!(ret, expect);
             });

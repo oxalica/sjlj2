@@ -34,7 +34,6 @@
 //!   It is suitable for embedded environment.
 //!
 //! ```
-//! use std::num::NonZero;
 //! use std::ops::ControlFlow;
 //! use sjlj2::catch_long_jump;
 //!
@@ -42,13 +41,13 @@
 //! // Execute with a jump checkpoint. Both closures can return a value.
 //! let ret = catch_long_jump(|jump_point| {
 //!     a = 13;
-//!     // Jump back to the alternative path with a `NonZero<usize>` value.
+//!     // Jump back to the alternative path with an arbitrary `usize` payload.
 //!     // SAFETY: All frames between `catch_long_jump` and the current are POFs.
 //!     unsafe {
-//!         jump_point.long_jump(NonZero::new(99).unwrap());
+//!         jump_point.long_jump(99);
 //!     }
 //! });
-//! assert_eq!(ret.break_value().unwrap().get(), 99);
+//! assert_eq!(ret, ControlFlow::Break(99));
 //! ```
 //!
 //! ## Cargo features
@@ -85,7 +84,6 @@
 #![cfg_attr(not(any(test, feature = "unwind")), no_std)]
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
-use core::num::NonZero;
 use core::ops::ControlFlow;
 
 // Overridable by the next definition, and can be unused on some targets.
@@ -157,8 +155,6 @@ mod imp;
 )))]
 #[macro_use]
 mod imp {
-    use super::NonZero;
-
     compile_error!("sjlj2: unsupported platform");
 
     macro_rules! set_jump_raw {
@@ -167,7 +163,7 @@ mod imp {
         };
     }
 
-    pub(crate) unsafe fn long_jump_raw(_buf: *mut (), _result: NonZero<usize>) -> ! {
+    pub(crate) unsafe fn long_jump_raw(_buf: *mut (), _data: usize) -> ! {
         unimplemented!()
     }
 }
@@ -223,8 +219,8 @@ impl JumpPoint<'_> {
     ///
     /// See [`long_jump`].
     #[inline]
-    pub unsafe fn long_jump(self, result: NonZero<usize>) -> ! {
-        long_jump(self, result)
+    pub unsafe fn long_jump(self, data: usize) -> ! {
+        long_jump(self, data)
     }
 }
 
@@ -260,7 +256,7 @@ impl JumpPoint<'_> {
 /// outside the ASM boundary.
 #[doc(alias = "setjmp")]
 #[inline]
-pub fn catch_long_jump<T, F>(f: F) -> ControlFlow<NonZero<usize>, T>
+pub fn catch_long_jump<T, F>(f: F) -> ControlFlow<usize, T>
 where
     F: FnOnce(JumpPoint<'_>) -> T,
 {
@@ -291,7 +287,7 @@ where
 }
 
 #[inline]
-fn set_jump_impl<F>(ordinary: F) -> ControlFlow<NonZero<usize>>
+fn set_jump_impl<F>(ordinary: F) -> ControlFlow<usize>
 where
     F: FnOnce(JumpPoint<'_>),
 {
@@ -306,12 +302,11 @@ where
 
     macro_rules! gen_wrap {
         ($abi:literal) => {
-            unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) -> usize {
+            unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) {
                 // Non-unwinding ABI generates abort-on-unwind guard since our MSRV 1.87.
                 // No need to handle unwinding here.
                 let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
                 unsafe { ManuallyDrop::take(&mut data.func)(jp) };
-                0
             }
         };
     }
@@ -343,17 +338,18 @@ where
 
     unsafe {
         set_jump_raw!(&raw mut data, wrap::<F>, {
-            unsafe {
-                let val = NonZero::new_unchecked(data.jmp_buf.assume_init().0[0]);
-                return ControlFlow::Break(val);
-            }
+            let data = unsafe { data.jmp_buf.assume_init().0[0] };
+            return ControlFlow::Break(data);
         });
         ControlFlow::Continue(())
     }
 }
 
-/// Long jump to a checkpoint, force unwinding the stack and return to an early
-/// [`catch_long_jump`] specified by `point`.
+/// Long jump to a checkpoint, force unwinding the stack and return an arbitrary
+/// `data` to an early [`catch_long_jump`] specified by `point`.
+///
+/// Note: Unlike C `longjmp`, this function will not special case `data == 0`.
+/// `long_jump(jp, 0)` will correctly make `catch_long_jump` return `ControlFlow::Break(0)`.
 ///
 /// # Safety
 ///
@@ -376,6 +372,6 @@ where
 /// [misopt]: https://github.com/rust-lang/rfcs/issues/2625
 #[doc(alias = "longjmp")]
 #[inline]
-pub unsafe fn long_jump(point: JumpPoint<'_>, result: NonZero<usize>) -> ! {
-    unsafe { imp::long_jump_raw(point.0, result) }
+pub unsafe fn long_jump(point: JumpPoint<'_>, data: usize) -> ! {
+    unsafe { imp::long_jump_raw(point.0, data) }
 }
