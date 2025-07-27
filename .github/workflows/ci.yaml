@@ -2,6 +2,9 @@ name: CI
 on:
   pull_request:
   push:
+    branches:
+      - main
+      - ci
   schedule:
     - cron: '33 20 * * 0' # Sun *-*-* 20:33:00 UTC
   workflow_dispatch:
