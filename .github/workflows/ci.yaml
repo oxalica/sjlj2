@@ -57,10 +57,9 @@ jobs:
           - rust: stable
             os: windows-latest
             platform: i686-pc-windows-gnu
-          # FIXME: process didn't exit successfully: exit code: 0xe06d7363
-          # - rust: stable
-          #   os: windows-latest
-          #   platform: i686-pc-windows-msvc
+          - rust: stable
+            os: windows-latest
+            platform: i686-pc-windows-msvc
     name: Test ${{ matrix.rust }} on ${{ matrix.platform || matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:

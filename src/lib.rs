@@ -71,11 +71,9 @@
 //! - x86 (i686)
 //! - x86\_64
 //! - riscv64
-//! - riscv32 (with and without E-extension)
+//! - riscv32, with or without E-extension
 //! - aarch64 (ARMv8)
 //! - arm
-//!
-//! FIXME: i686-pc-windows-msvc is known to be crashy.
 //!
 //! ## Similar crates
 //!
@@ -126,9 +124,14 @@ macro_rules! maybe_strip_cfi {
 #[path = "./x86_64.rs"]
 mod imp;
 
-#[cfg(target_arch = "x86")]
+#[cfg(all(target_arch = "x86", not(target_env = "msvc")))]
 #[macro_use]
 #[path = "./x86.rs"]
+mod imp;
+
+#[cfg(all(target_arch = "x86", target_env = "msvc"))]
+#[macro_use]
+#[path = "./x86_msvc.rs"]
 mod imp;
 
 #[cfg(target_arch = "riscv64")]
