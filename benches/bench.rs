@@ -28,7 +28,7 @@ fn bench_sjlj(c: &mut Criterion) {
     });
 
     for (name, jump, lvl, expect) in [
-        ("ordinary", false, 0, 42),
+        ("return", false, 0, 42),
         ("jump0", true, 0, 14),
         (&format!("jump{NEST_LVL}"), true, NEST_LVL, 14),
     ] {

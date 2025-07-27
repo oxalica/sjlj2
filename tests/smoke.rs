@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::hint::black_box;
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, panic_any};
@@ -20,6 +21,13 @@ fn smoke() {
     // Unlike C, we handle zero correctly.
     let ret = catch_long_jump(|jp| unsafe { jp.long_jump(0) });
     assert_eq!(ret, ControlFlow::Break(0));
+}
+
+#[test]
+fn must_jump() {
+    // This should eliminate the normal return path.
+    let ret = catch_long_jump::<Infallible, _>(|jp| unsafe { jp.long_jump(42) });
+    assert_eq!(ret, ControlFlow::Break(42));
 }
 
 #[test]

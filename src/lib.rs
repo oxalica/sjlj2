@@ -268,7 +268,7 @@ where
             || f(jp),
         )));
     }) {
-        // SAFETY: `ordinary` returns normally or caught a panic, thus `ret` is initialized.
+        // SAFETY: `f` returns normally or caught a panic, thus `ret` is initialized.
         ControlFlow::Continue(()) => match unsafe { ret.assume_init() } {
             Ok(ret) => ControlFlow::Continue(ret),
             Err(payload) => std::panic::resume_unwind(payload),
@@ -280,14 +280,14 @@ where
     match set_jump_impl(|jp| {
         ret.write(f(jp));
     }) {
-        // SAFETY: `ordinary` returns normally, thus `ret` is initialized.
+        // SAFETY: `f` returns normally, thus `ret` is initialized.
         ControlFlow::Continue(()) => ControlFlow::Continue(unsafe { ret.assume_init() }),
         ControlFlow::Break(val) => ControlFlow::Break(val),
     }
 }
 
 #[inline]
-fn set_jump_impl<F>(ordinary: F) -> ControlFlow<usize>
+fn set_jump_impl<F>(f: F) -> ControlFlow<usize>
 where
     F: FnOnce(JumpPoint<'_>),
 {
@@ -333,7 +333,7 @@ where
 
     let mut data = Data::<F> {
         jmp_buf: MaybeUninit::uninit(),
-        func: ManuallyDrop::new(ordinary),
+        func: ManuallyDrop::new(f),
     };
 
     unsafe {
