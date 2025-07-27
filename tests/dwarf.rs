@@ -4,7 +4,7 @@ use std::hint::black_box;
 use std::num::NonZero;
 use std::time::{Duration, Instant};
 
-use sjlj2::{long_jump, set_jump};
+use sjlj2::catch_long_jump;
 
 const TEST_DURATION: Duration = Duration::from_secs(60);
 const CHUNK: usize = 1_000_000;
@@ -19,17 +19,17 @@ fn dwarf_unwind() {
     let inst = Instant::now();
     while inst.elapsed() < TEST_DURATION {
         for _ in 0..CHUNK {
-            let ret = set_jump(
-                |jp| {
-                    if black_box(true) {
-                        unsafe { long_jump(jp, NonZero::new(13).unwrap()) };
-                    } else {
-                        42
-                    }
-                },
-                |ret| ret.get() + 1,
-            );
-            assert_eq!(ret, 14);
+            let ret = catch_long_jump(|jp| {
+                if black_box(true) {
+                    unsafe { jp.long_jump(NonZero::new(13).unwrap()) };
+                } else {
+                    42
+                }
+            })
+            .break_value()
+            .unwrap()
+            .get();
+            assert_eq!(ret, 13);
         }
     }
 }
