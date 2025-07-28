@@ -1,9 +1,9 @@
 use std::hint::black_box;
-use std::num::NonZero;
+use std::ops::ControlFlow;
 use std::panic::{catch_unwind, resume_unwind};
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use sjlj2::{long_jump, set_jump};
+use sjlj2::catch_long_jump;
 
 const NEST_LVL: usize = 20;
 
@@ -28,7 +28,7 @@ fn bench_sjlj(c: &mut Criterion) {
     });
 
     for (name, jump, lvl, expect) in [
-        ("ordinary", false, 0, 42),
+        ("return", false, 0, 42),
         ("jump0", true, 0, 14),
         (&format!("jump{NEST_LVL}"), true, NEST_LVL, 14),
     ] {
@@ -36,15 +36,15 @@ fn bench_sjlj(c: &mut Criterion) {
             let jump = black_box(jump);
             let lvl = black_box(lvl);
             b.iter(|| {
-                let ret = set_jump(
-                    move |jp| {
-                        if jump {
-                            nest(lvl, &|| unsafe { long_jump(jp, NonZero::new(13).unwrap()) });
-                        }
-                        42usize
-                    },
-                    |n| n.get() + 1,
-                );
+                let ret = match catch_long_jump(move |jp| {
+                    if jump {
+                        nest(lvl, &|| unsafe { jp.long_jump(13) });
+                    }
+                    42usize
+                }) {
+                    ControlFlow::Continue(ret) => ret,
+                    ControlFlow::Break(data) => data + 1,
+                };
                 assert_eq!(ret, expect);
             });
         });

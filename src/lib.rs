@@ -1,20 +1,16 @@
-//! # Safer[^1], cheaper and more ergonomic setjmp/longjmp in Rust[^2].
+//! # Safer[^1], cheaper and more ergonomic setjmp/longjmp in assembly.
 //!
 //! [^1]: [`long_jump`] is still unsafe and is technically UB, though.
 //!       See more about safety in [`long_jump`].
-//! [^2]: ...and assembly. No C trampoline is involved!
 //!
-//! - Ergonomic and safer* Rusty API for typical usages. Closure API instead of multiple-return.
+//! - Ergonomic and safer Rusty API for typical usages. Closure API instead of multiple-return.
 //!
 //!   Multiple-return functions are undefined behaviors due to
 //!   [fatal interaction with optimizer][misopt].
 //!   This crate does not suffer from the misoptimization (covered in `tests/smoke.rs`).
-//!
-//!   ⚠️  We admit that since it's not yet undefined to force unwind Rust POFs,
-//!   `long_jump` is still technically undefined behavior.
-//!   But this crate is an attempt to make a semantically-correct abstraction free from
-//!   misoptimization, and you accept the risk by using this crate.
 //!   If you find any misoptimization in practice, please open an issue.
+//!
+//!   See [`long_jump`] for details.
 //!
 //! - Single-use jump checkpoint.
 //!
@@ -23,10 +19,16 @@
 //! - Minimal memory and performance footprint.
 //!
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
-//!   all callee-saved registers. Inline-able `set_jump` and `long_jump`.
+//!   all callee-saved registers. Inline-able `long_jump`.
 //!
-//!   - 2.4ns `set_jump` setup and 2.9ns `long_jump` on a modern x86\_64 CPU.
-//!     ~300-490x faster than `catch_unwind`-`panic_any!`.
+//!   On a modern x86\_64 CPU:
+//!   - 2.7ns `catch_long_jump` without `long_jump`.
+//!   - 3.4ns `catch_long_jump`+`long_jump`.
+//!     ~416x faster than `catch_unwind`-`panic_any`.
+//!
+//! - No libc or C compiler dependency.
+//!
+//!   The low-level implementation is written in inline assembly.
 //!
 //! - `no_std` support.
 //!
@@ -34,37 +36,28 @@
 //!   It is suitable for embedded environment.
 //!
 //! ```
-//! use std::num::NonZero;
-//! use sjlj2::JumpPoint;
+//! use std::ops::ControlFlow;
+//! use sjlj2::catch_long_jump;
 //!
 //! let mut a = 42;
 //! // Execute with a jump checkpoint. Both closures can return a value.
-//! let b = JumpPoint::set_jump(
-//!     // The ordinary path that is always executed.
-//!     |jump_point| {
-//!         a = 13;
-//!         // Jump back to the alternative path with a `NonZero<usize>` value.
-//!         // SAFETY: All frames between `set_jump` and `long_jump` are POFs.
-//!         unsafe {
-//!             jump_point.long_jump(NonZero::new(99).unwrap());
-//!         }
-//!     },
-//!     // The alternative path which is only executed once `long_jump` is called.
-//!     |v| {
-//!         // The carried value.
-//!         v.get()
+//! let ret = catch_long_jump(|jump_point| {
+//!     a = 13;
+//!     // Jump back to the alternative path with an arbitrary `usize` payload.
+//!     // SAFETY: All frames between `catch_long_jump` and the current are POFs.
+//!     unsafe {
+//!         jump_point.long_jump(99);
 //!     }
-//! );
-//! assert_eq!(a, 13);
-//! assert_eq!(b, 99);
+//! });
+//! assert_eq!(ret, ControlFlow::Break(99));
 //! ```
 //!
-//! ## Features
+//! ## Cargo features
+//!
+//! - `unwind`: Enables unwinding across [`catch_long_jump`] boundary, by
+//!   catching and resuming the panic payload. This feature requires `std`.
 //!
 //! No feature is enabled by default.
-//!
-//! - `unwind`: Enables unwinding across [`set_jump`] boundary from its `ordinary` closure, by
-//!   catching and resuming it. This feature requires `std`.
 //!
 //! ## Supported architectures
 //!
@@ -93,7 +86,7 @@
 #![cfg_attr(not(any(test, feature = "unwind")), no_std)]
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
-use core::num::NonZero;
+use core::ops::ControlFlow;
 
 // Overridable by the next definition, and can be unused on some targets.
 #[allow(unused_macros)]
@@ -164,8 +157,6 @@ mod imp;
 )))]
 #[macro_use]
 mod imp {
-    use super::NonZero;
-
     compile_error!("sjlj2: unsupported platform");
 
     macro_rules! set_jump_raw {
@@ -174,7 +165,7 @@ mod imp {
         };
     }
 
-    pub(crate) unsafe fn long_jump_raw(_buf: *mut (), _result: NonZero<usize>) -> ! {
+    pub(crate) unsafe fn long_jump_raw(_buf: *mut (), _data: usize) -> ! {
         unimplemented!()
     }
 }
@@ -212,8 +203,8 @@ impl JumpPoint<'_> {
     /// # Safety
     ///
     /// `raw` must be a valid state returned [`JumpPoint::as_raw`], and the returned type must not
-    /// outlive the lifetime of the original [`JumpPoint`] (that is, the closure `ordinary` of
-    /// [`set_jump`]).
+    /// outlive the lifetime of the original [`JumpPoint`] (that is, the argument closure of
+    /// [`catch_long_jump`]).
     pub const unsafe fn from_raw(raw: *mut ()) -> Self {
         Self(raw, PhantomData)
     }
@@ -224,125 +215,100 @@ impl JumpPoint<'_> {
         self.0
     }
 
-    /// Alias of [`set_jump`].
-    #[inline]
-    pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
-    where
-        F: FnOnce(JumpPoint<'_>) -> T,
-        G: FnOnce(NonZero<usize>) -> T,
-    {
-        set_jump(ordinary, lander)
-    }
-
     /// Alias of [`long_jump`].
     ///
     /// # Safety
     ///
     /// See [`long_jump`].
     #[inline]
-    pub unsafe fn long_jump(self, result: NonZero<usize>) -> ! {
-        long_jump(self, result)
+    pub unsafe fn long_jump(self, data: usize) -> ! {
+        long_jump(self, data)
     }
 }
 
-/// Set a jump checkpoint.
+/// Invokes a closure with a jump checkpoint.
 ///
-/// Set a jump checkpoint and execute `ordinary` with a checkpoint argument and return its result.
-/// If a long jump is issued on the checkpoint inside execution of `ordinary`, control flow goes
-/// back, execute `lander` and return its result from `set_jump`.
+/// This function returns `Continue` if the closure returns normally. If
+/// [`long_jump`] is called on the closure argument [`JumpPoint`]
+/// if a `long_jump` is executed during the execution of the closure,
+/// it force unwinds the stack back to this function, and `Break` is returned
+/// with the carrying value from the argument of `long_jump`.
 ///
-/// `ordinary` and `lander` must not have significant `Drop`, otherwise a compile error is
-/// generated. The call frame cannot be POF if any of them has a significant `Drop` impl.
-/// Since it is implemented with [`core::mem::needs_drop`], it may generates false positive
-/// compile errors.
+/// See [`long_jump`] for its safety condition.
 ///
-/// This function is inline-able but `ordinary` is called via a function wrapper because it must
-/// has its own stack frame to avoid [misoptimization][misopt2].
+/// # Precondition
 ///
-/// [misopt2]: https://github.com/rust-lang/libc/issues/1596
+/// The argument closure must not have a significant `Drop`, or the call frame cannot be POF.
+/// We did a best-effort detection for this with [`core::mem::needs_drop`] and a
+/// compiler error will be generated for `ordinary` with significant `Drop`.
+/// It may (but practically never) generates false positive compile errors.
 ///
 /// # Safety
 ///
-/// Yes, this function is actually safe to use. [`long_jump`] is unsafe, however.
+/// Yes, this function is safe to call. [`long_jump`] is unsafe, however.
 ///
 /// # Panics
 ///
-/// It is allowed to panic in `ordinary` or `lander` closure.
-/// But panics from `ordinary` will cause an abort, unless feature `unwind` is enabled, then the
-/// panic will be caught and resumed to cross `set_jump` boundary.
+/// It is safe to panic (unwind) in `ordinary` but the behavior varies:
+/// - If cargo feature `unwind` is enabled, panic will be caught, passed through
+///   ASM boundary and resumed.
+/// - Otherwise,  it aborts the process.
 ///
-/// Panics in `lander` can always unwind across `set_jump`.
+/// Panics from `lander` or `Drop` of `T` are trivial because they are executed
+/// outside the ASM boundary.
 #[doc(alias = "setjmp")]
 #[inline]
-pub fn set_jump<T, F, G>(ordinary: F, lander: G) -> T
+pub fn catch_long_jump<T, F>(f: F) -> ControlFlow<usize, T>
 where
     F: FnOnce(JumpPoint<'_>) -> T,
-    G: FnOnce(NonZero<usize>) -> T,
 {
+    let mut ret = MaybeUninit::uninit();
+
     #[cfg(feature = "unwind")]
-    match set_jump_no_unwind(
-        move |jp| std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || ordinary(jp))),
-        move |val| Ok(lander(val)),
-    ) {
-        Ok(ret) => ret,
-        Err(err) => std::panic::resume_unwind(err),
+    match set_jump_impl(|jp| {
+        ret.write(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || f(jp),
+        )));
+    }) {
+        // SAFETY: `f` returns normally or caught a panic, thus `ret` is initialized.
+        ControlFlow::Continue(()) => match unsafe { ret.assume_init() } {
+            Ok(ret) => ControlFlow::Continue(ret),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+        ControlFlow::Break(val) => ControlFlow::Break(val),
     }
 
     #[cfg(not(feature = "unwind"))]
-    set_jump_no_unwind(ordinary, lander)
+    match set_jump_impl(|jp| {
+        ret.write(f(jp));
+    }) {
+        // SAFETY: `f` returns normally, thus `ret` is initialized.
+        ControlFlow::Continue(()) => ControlFlow::Continue(unsafe { ret.assume_init() }),
+        ControlFlow::Break(val) => ControlFlow::Break(val),
+    }
 }
 
-// For better logical order.
-#[allow(clippy::items_after_statements)]
 #[inline]
-fn set_jump_no_unwind<T, F, G>(ordinary: F, lander: G) -> T
+fn set_jump_impl<F>(f: F) -> ControlFlow<usize>
 where
-    F: FnOnce(JumpPoint<'_>) -> T,
-    G: FnOnce(NonZero<usize>) -> T,
+    F: FnOnce(JumpPoint<'_>),
 {
-    const {
-        assert!(
-            !core::mem::needs_drop::<F>(),
-            "set_jump closures must not have significant Drop",
-        );
-        assert!(
-            !core::mem::needs_drop::<G>(),
-            "set_jump closures must not have significant Drop",
-        );
-        // `T` can have `Drop` impl because when it is returned, there are no more user code can
-        // unwind between its return from F or G and the return from `set_jump`.
-    }
-
     // NB: Properties expected by ASM:
     // - `jmp_buf` is at offset 0.
     // - On the exceptional path, the carried value is stored in `jmp_buf[0]`.
     #[repr(C)]
-    struct Data<T, F> {
+    struct Data<F> {
         jmp_buf: MaybeUninit<imp::Buf>,
         func: ManuallyDrop<F>,
-        ret: MaybeUninit<T>,
-    }
-
-    struct AbortGuard;
-    impl Drop for AbortGuard {
-        fn drop(&mut self) {
-            // Manually trigger a double-panic abort.
-            // Workaround: <https://github.com/rust-lang/rust/issues/67952>
-            panic!("panic cannot unwind across set_jump");
-        }
     }
 
     macro_rules! gen_wrap {
         ($abi:literal) => {
-            unsafe extern $abi fn wrap<T, F: FnOnce(JumpPoint<'_>) -> T>(
-                data: &mut Data<T, F>,
-            ) -> usize {
-                let guard = AbortGuard;
+            unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) {
+                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV 1.87.
+                // No need to handle unwinding here.
                 let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
-                let ret = unsafe { ManuallyDrop::take(&mut data.func)(jp) };
-                data.ret.write(ret);
-                core::mem::forget(guard);
-                0
+                unsafe { ManuallyDrop::take(&mut data.func)(jp) };
             }
         };
     }
@@ -360,43 +326,54 @@ where
     #[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
     gen_wrap!("C");
 
-    let mut data = Data::<T, F> {
+    const {
+        assert!(
+            !core::mem::needs_drop::<F>(),
+            "catch_long_jump closure must not have a significant Drop",
+        );
+    }
+
+    let mut data = Data::<F> {
         jmp_buf: MaybeUninit::uninit(),
-        func: ManuallyDrop::new(ordinary),
-        ret: MaybeUninit::uninit(),
+        func: ManuallyDrop::new(f),
     };
 
     unsafe {
-        set_jump_raw!(&raw mut data, wrap::<T, F>, {
-            unsafe {
-                let val = NonZero::new_unchecked(data.jmp_buf.assume_init().0[0]);
-                return lander(val);
-            }
+        set_jump_raw!(&raw mut data, wrap::<F>, {
+            let data = unsafe { data.jmp_buf.assume_init().0[0] };
+            return ControlFlow::Break(data);
         });
-        data.ret.assume_init()
+        ControlFlow::Continue(())
     }
 }
 
-/// Long jump to a checkpoint, and executing corresponding `set_jump`'s `exceptional` closure.
+/// Long jump to a checkpoint, force unwinding the stack and return an arbitrary
+/// `data` to an early [`catch_long_jump`] specified by `point`.
+///
+/// Note: Unlike C `longjmp`, this function will not special case `data == 0`.
+/// `long_jump(jp, 0)` will correctly make `catch_long_jump` return `ControlFlow::Break(0)`.
 ///
 /// # Safety
 ///
-/// - When [`long_jump`] is called on the [`JumpPoint`] argument of `ordinary` closure during its
-///   execution, all stack frames between that `long_jump` and this `set_jump`, must be all
-///   [Plain Old Frames][pof].
+/// All stack frames between the current and the `catch_long_jump` specified by
+/// `point` must all be [Plain Old Frames][pof].
 ///
-///   Note: It is explicitly said in [RFC2945][pof] that
-///   > When deallocating Rust POFs: for now, this is not specified, and must be considered
-///   > undefined behavior.
-///
-///   But in practice, this crate does not suffers the
-///   [relevant optimization issue caused by return-twice][misopt],
-///   and should be UB-free as long as only POFs are `long_jump`ed over.
+/// > ⚠️
+/// > It is explicitly said in [RFC2945][pof] that
+/// > > When deallocating Rust POFs: for now, this is not specified, and must be considered
+/// > > undefined behavior.
+/// >
+/// > In practice, this crate does not suffers the
+/// > [relevant optimization issue caused by return-twice][misopt],
+/// > and should be UB-free as long as only POFs are `long_jump`ed over.
+/// >
+/// > But you still need to take your own risk until force-unwinding behavior is
+/// > fully defined by Rust Reference.
 ///
 /// [pof]: https://rust-lang.github.io/rfcs/2945-c-unwind-abi.html#plain-old-frames
 /// [misopt]: https://github.com/rust-lang/rfcs/issues/2625
 #[doc(alias = "longjmp")]
 #[inline]
-pub unsafe fn long_jump(point: JumpPoint<'_>, result: NonZero<usize>) -> ! {
-    unsafe { imp::long_jump_raw(point.0, result) }
+pub unsafe fn long_jump(point: JumpPoint<'_>, data: usize) -> ! {
+    unsafe { imp::long_jump_raw(point.0, data) }
 }

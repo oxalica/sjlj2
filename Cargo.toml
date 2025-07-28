@@ -29,11 +29,7 @@ name = "bench"
 harness = false
 
 [[example]]
-name = "codegen_std"
-crate-type = ["staticlib"]
-
-[[example]]
-name = "codegen_nostd"
+name = "codegen"
 crate-type = ["staticlib"]
 
 [profile.release]
@@ -41,10 +37,6 @@ debug = "line-tables-only"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-
-# Inlining `set_jump` to achieve the advertized good performance, by avoiding
-# closure call cost.
-inline_always = "allow"
 
 # False positive on `ARMv8`.
 doc_markdown = "allow"
