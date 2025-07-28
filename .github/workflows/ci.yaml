@@ -113,7 +113,7 @@ jobs:
             nostd: true
     env:
       RUSTFLAGS: ${{ matrix.nostd && '-Cpanic=abort' || '' }}
-      CARGO_ARGS: ${{ matrix.nostd && '-Zbuild-std=core --example=codegen_nostd --no-default-features' || '--all-targets' }}
+      CARGO_ARGS: ${{ matrix.nostd && '-Zbuild-std=core --example=codegen --no-default-features' || '--all-targets' }}
     name: Test QEMU ${{ matrix.platform }}
     runs-on: ubuntu-latest
     steps:
