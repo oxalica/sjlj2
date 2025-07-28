@@ -65,7 +65,7 @@
 //! - x86\_64
 //! - riscv64
 //! - riscv32, with or without E-extension
-//! - aarch64 (ARMv8)
+//! - aarch64 (ARM v8)
 //! - arm
 //!
 //! ## Similar crates

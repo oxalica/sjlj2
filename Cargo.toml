@@ -37,6 +37,3 @@ debug = "line-tables-only"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-
-# False positive on `ARMv8`.
-doc_markdown = "allow"
