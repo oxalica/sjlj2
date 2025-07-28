@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, resume_unwind};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use sjlj2::catch_long_jump;
 
 const NEST_LVL: usize = 20;
