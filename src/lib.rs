@@ -229,8 +229,7 @@ impl JumpPoint<'_> {
 /// Invokes a closure with a jump checkpoint.
 ///
 /// This function returns `Continue` if the closure returns normally. If
-/// [`long_jump`] is called on the closure argument [`JumpPoint`]
-/// if a `long_jump` is executed during the execution of the closure,
+/// [`long_jump`] is called on the closure argument [`JumpPoint`] inside the closure,
 /// it force unwinds the stack back to this function, and `Break` is returned
 /// with the carrying value from the argument of `long_jump`.
 ///
@@ -256,6 +255,25 @@ impl JumpPoint<'_> {
 ///
 /// Panics from `lander` or `Drop` of `T` are trivial because they are executed
 /// outside the ASM boundary.
+///
+/// # Nesting
+///
+/// The stack frame of `catch_long_jump` is a Plain Old Frame (POF), thus nesting
+/// `catch_long_jump` and `long_jump` across multiple levels of
+/// `catch_long_jump` is allowed.
+///
+/// ```
+/// use std::ops::ControlFlow;
+/// use sjlj2::catch_long_jump;
+///
+/// let ret = catch_long_jump(|jp1| {
+///     let _ = catch_long_jump(|_jp2| {
+///         unsafe { jp1.long_jump(42) };
+///     });
+///     unreachable!();
+/// });
+/// assert_eq!(ret, ControlFlow::Break(42));
+/// ```
 #[doc(alias = "setjmp")]
 #[inline]
 pub fn catch_long_jump<T, F>(f: F) -> ControlFlow<usize, T>
