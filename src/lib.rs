@@ -211,7 +211,7 @@ impl JumpPoint<'_> {
 
     /// Get the underlying raw state.
     #[must_use]
-    pub fn as_raw(self) -> *mut () {
+    pub const fn as_raw(self) -> *mut () {
         self.0
     }
 
