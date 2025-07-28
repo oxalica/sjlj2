@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## v0.4.0
+
+### Changed
+
+- MSRV is bumped to 1.87, and edition 2024 is used.
+
+- The `set_jump` interface is refactored to mimic the `catch_unwind` interface
+  and also enables the path elimination optimization.
+
+  The new signature is:
+  ```rust
+  pub fn catch_long_jump<T, F>(f: F) -> ControlFlow<usize, T>
+  where F: FnOnce(JumpPoint<'_>) -> T
+  ```
+
+- Explicitly document that `catch_long_jump` is POF, thus 
+  `long_jump` across multiple levels of `catch_long_jump` is allowed.
+
+- The type of carried data of `long_jump` is changed from `NonZero<usize>` to `usize`.
+  Zero value is now correctly handled, unlike the C/POSIX counterpart.
+
+- `JumpPoint::as_raw` is not a `const fn`.
+
+### Removed
+
+- `unstable-asm-goto` feature. Since `asm_goto` is stabilized under the new MSRV.
+
+### Fixed
+
+- Crash on i686-pc-windows-msvc.
+
+- Crash on aarch64 under nightly rustc.
+
 ## v0.3.1
 
 ### Fixed
