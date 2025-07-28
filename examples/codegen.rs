@@ -12,7 +12,7 @@ fn panic_handler(_: &core::panic::PanicInfo<'_>) -> ! {
     loop {}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn codegen_call(f: extern "C" fn(*mut ()), g: extern "C" fn(usize)) {
     match catch_long_jump(|jp| {
         f(jp.as_raw());
@@ -23,12 +23,12 @@ extern "C" fn codegen_call(f: extern "C" fn(*mut ()), g: extern "C" fn(usize)) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn codegen_no_jump() -> bool {
     catch_long_jump(|_jp| 42).is_break()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn codegen_must_jump() -> bool {
     catch_long_jump::<Infallible, _>(|jp| unsafe { jp.long_jump(13) }).is_break()
 }

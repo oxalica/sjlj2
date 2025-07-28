@@ -222,7 +222,7 @@ impl JumpPoint<'_> {
     /// See [`long_jump`].
     #[inline]
     pub unsafe fn long_jump(self, data: usize) -> ! {
-        long_jump(self, data)
+        unsafe { long_jump(self, data) }
     }
 }
 

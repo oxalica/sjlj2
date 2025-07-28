@@ -1,7 +1,7 @@
 [package]
 name = "sjlj2"
 version = "0.3.1"
-edition = "2021"
+edition = "2024"
 description = "Safer, cheaper and more ergonomic setjmp/longjmp in Rust"
 documentation = "https://docs.rs/sjlj2"
 categories = ["embedded", "no-std::no-alloc"]
