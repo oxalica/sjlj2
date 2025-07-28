@@ -21,8 +21,10 @@
 //!   Single `usize` `JumpPoint`. Let optimizer save only necessary states rather than bulk saving
 //!   all callee-saved registers. Inline-able `long_jump`.
 //!
-//!   - 2.4ns `catch_long_jump` setup and 2.9ns `long_jump` on a modern x86\_64 CPU.
-//!     ~300-490x faster than `catch_unwind`-`panic_any!`.
+//!   On a modern x86\_64 CPU:
+//!   - 2.7ns `catch_long_jump` without `long_jump`.
+//!   - 3.4ns `catch_long_jump`+`long_jump`.
+//!     ~416x faster than `catch_unwind`-`panic_any`.
 //!
 //! - No libc or C compiler dependency.
 //!
