@@ -48,7 +48,7 @@ jobs:
       fail-fast: false
       matrix:
         rust: [stable, beta, nightly]
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-13, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
         platform: ['']
         include:
           - rust: stable
