@@ -29,12 +29,10 @@ jobs:
       RUSTFLAGS: -Dwarnings
       RUSTDOCFLAGS: -Dwarnings
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust stable
-        run: |
-          rustup update --no-self-update stable
-          rustup default stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -63,8 +61,7 @@ jobs:
     name: Test ${{ matrix.rust }} on ${{ matrix.platform || matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Install MinGW
         if: matrix.platform == 'i686-pc-windows-gnu'
         # See: https://github.com/egor-tensin/setup-mingw/issues/17
@@ -117,14 +114,10 @@ jobs:
     name: Test QEMU ${{ matrix.platform }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Prepare devShell
-        run: nix develop --command true
       - name: Prepare devShell
         run: nix develop --command true
 
@@ -157,15 +150,9 @@ jobs:
     timeout-minutes: 15
     if: github.event.schedule != '33 20 * * *'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust 1.87
-        run: |
-          rustup update --no-self-update stable
-          rustup default 1.87
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.87
+      - uses: Swatinem/rust-cache@v2
       - name: Test
         run: |
           for flags in {,--features=unwind}' '{,'--release -- --include-ignored'}; do
