@@ -22,7 +22,8 @@
           default = pkgs.mkShell {
             nativeBuildInputs = [
               (lib.lowPrio (
-                rust-bin.stable.latest.default.override {
+                # -Zbuild-std
+                rust-bin.nightly."2026-02-01".default.override {
                   targets = [
                     "i686-unknown-linux-gnu"
                     "riscv64gc-unknown-linux-gnu"
