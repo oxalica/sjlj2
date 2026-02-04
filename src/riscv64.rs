@@ -2,10 +2,19 @@
 #[repr(transparent)]
 pub(crate) struct Buf(pub [usize; 4]);
 
-macro_rules! set_jump_raw_impl {
-    ($($tt:tt)*) => {
+macro_rules! set_jump_raw {
+    ($buf_ptr:expr, $func:path, $lander:block) => {
         core::arch::asm!(
-            $($tt)*
+            "la a1, {lander}",
+            "sd s0,   (a0)",
+            "sd s1,  8(a0)",
+            "sd sp, 16(a0)",
+            "sd a1, 24(a0)",
+            "call {func}",
+
+            in("a0") $buf_ptr, // arg0
+            func = sym $func,
+            lander = label $lander,
 
             // Callee saved registers.
             lateout("ra") _,
@@ -36,23 +45,6 @@ macro_rules! set_jump_raw_impl {
             lateout("fs11") _,
             // Caller saved registers.
             clobber_abi("C"),
-        )
-    };
-}
-
-macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:path, $lander:block) => {
-        set_jump_raw_impl!(
-            "la a1, {lander}",
-            "sd s0,   (a0)",
-            "sd s1,  8(a0)",
-            "sd sp, 16(a0)",
-            "sd a1, 24(a0)",
-            "call {func}",
-
-            in("a0") $buf_ptr, // arg0
-            func = sym $func,
-            lander = label $lander,
         )
     };
 }
