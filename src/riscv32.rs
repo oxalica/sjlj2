@@ -91,19 +91,21 @@ macro_rules! set_jump_raw {
 #[inline]
 pub(crate) unsafe fn long_jump_raw(jp: *mut (), data: usize) -> ! {
     unsafe {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
+        core::arch::asm!(
+            #[cfg(emit_cfi)]
+            ".cfi_remember_state",
+            #[cfg(emit_cfi)]
+            ".cfi_undefined ra",
 
-            [".cfi_remember_state"],
-            [".cfi_undefined ra"],
             "lw s0,   (a0)",
             "sw a1,   (a0)",
             "lw s1,  4(a0)",
             "lw sp,  8(a0)",
             "lw a2, 12(a0)",
             "jalr x0, a2",
-            [".cfi_restore_state"],
-            [],
+
+            #[cfg(emit_cfi)]
+            ".cfi_restore_state",
 
             in("a0") jp,
             in("a1") data,
