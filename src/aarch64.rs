@@ -20,7 +20,7 @@ macro_rules! set_jump_raw_impl {
 }
 
 macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:expr, $lander:block) => {
+    ($buf_ptr:expr, $func:path, $lander:block) => {
         set_jump_raw_impl!(
             "adr x1, {lander}",
             "mov x2, sp",
