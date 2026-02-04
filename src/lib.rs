@@ -323,7 +323,7 @@ where
     macro_rules! gen_wrap {
         ($abi:literal) => {
             unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) {
-                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV 1.87.
+                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV >= 1.81.
                 // No need to handle unwinding here.
                 let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
                 unsafe { ManuallyDrop::take(&mut data.func)(jp) };
