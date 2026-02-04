@@ -1,5 +1,8 @@
 {
-  inputs.rust-overlay.url = "github:oxalica/rust-overlay";
+  inputs.rust-overlay = {
+    url = "github:oxalica/rust-overlay";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
@@ -7,7 +10,6 @@
     let
       inherit (nixpkgs) lib;
       eachSystem = lib.genAttrs lib.systems.flakeExposed;
-      date = "2025-07-01";
     in
     {
       devShells = eachSystem (
@@ -20,7 +22,7 @@
           default = pkgs.mkShell {
             nativeBuildInputs = [
               (lib.lowPrio (
-                rust-bin.nightly.${date}.default.override {
+                rust-bin.stable.latest.default.override {
                   targets = [
                     "i686-unknown-linux-gnu"
                     "riscv64gc-unknown-linux-gnu"
