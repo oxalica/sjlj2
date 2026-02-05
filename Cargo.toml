@@ -1,6 +1,6 @@
 [package]
 name = "sjlj2"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "Safer, cheaper and more ergonomic setjmp/longjmp in Rust"
 documentation = "https://docs.rs/sjlj2"
@@ -8,7 +8,7 @@ categories = ["embedded", "no-std::no-alloc"]
 keywords = ["setjmp", "longjmp"]
 repository = "https://github.com/oxalica/sjlj2"
 license = "MIT OR Apache-2.0"
-exclude = ["flake.nix", "flake.lock"]
+exclude = ["flake.nix", "flake.lock", ".github"]
 # NB. Sync with CI!
 rust-version = "1.93" # asm_cfg
 
