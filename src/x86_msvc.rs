@@ -8,7 +8,7 @@
 pub(crate) struct Buf(pub [usize; 5]);
 
 macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:expr, $lander:block) => {
+    ($buf_ptr:expr, $func:path, $lander:block) => {
         core::arch::asm!(
             "call 2f",
             "2:",
@@ -43,11 +43,12 @@ macro_rules! set_jump_raw {
 #[inline]
 pub(crate) unsafe fn long_jump_raw(buf: *mut (), data: usize) -> ! {
     unsafe {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
+        core::arch::asm!(
+            #[cfg(emit_cfi)]
+            ".cfi_remember_state",
+            #[cfg(emit_cfi)]
+            ".cfi_undefined eip",
 
-            [".cfi_remember_state"],
-            [".cfi_undefined eip"],
             "mov esi, [ecx]",
             "mov [ecx], eax",
             "mov esp, [ecx + 4]",
@@ -55,8 +56,9 @@ pub(crate) unsafe fn long_jump_raw(buf: *mut (), data: usize) -> ! {
             "mov eax, [ecx + 16]",
             "mov fs:[0], eax",
             "jmp dword ptr [ecx + 12]",
-            [".cfi_restore_state"],
-            [],
+
+            #[cfg(emit_cfi)]
+            ".cfi_restore_state",
 
             in("cx") buf,
             in("ax") data,

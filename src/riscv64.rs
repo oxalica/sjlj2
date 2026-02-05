@@ -2,10 +2,19 @@
 #[repr(transparent)]
 pub(crate) struct Buf(pub [usize; 4]);
 
-macro_rules! set_jump_raw_impl {
-    ($($tt:tt)*) => {
+macro_rules! set_jump_raw {
+    ($buf_ptr:expr, $func:path, $lander:block) => {
         core::arch::asm!(
-            $($tt)*
+            "la a1, {lander}",
+            "sd s0,   (a0)",
+            "sd s1,  8(a0)",
+            "sd sp, 16(a0)",
+            "sd a1, 24(a0)",
+            "call {func}",
+
+            in("a0") $buf_ptr, // arg0
+            func = sym $func,
+            lander = label $lander,
 
             // Callee saved registers.
             lateout("ra") _,
@@ -40,38 +49,25 @@ macro_rules! set_jump_raw_impl {
     };
 }
 
-macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:expr, $lander:block) => {
-        set_jump_raw_impl!(
-            "la a1, {lander}",
-            "sd s0,   (a0)",
-            "sd s1,  8(a0)",
-            "sd sp, 16(a0)",
-            "sd a1, 24(a0)",
-            "call {func}",
-
-            in("a0") $buf_ptr, // arg0
-            func = sym $func,
-            lander = label $lander,
-        )
-    };
-}
-
 #[inline]
 pub(crate) unsafe fn long_jump_raw(jp: *mut (), data: usize) -> ! {
     unsafe {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
-            [".cfi_remember_state"],
-            [".cfi_undefined ra"],
+        core::arch::asm!(
+            #[cfg(emit_cfi)]
+            ".cfi_remember_state",
+            #[cfg(emit_cfi)]
+            ".cfi_undefined ra",
+
             "ld s0,   (a0)",
             "sd a1,   (a0)",
             "ld s1,  8(a0)",
             "ld sp, 16(a0)",
             "ld a2, 24(a0)",
             "jalr x0, a2",
-            [".cfi_restore_state"],
-            [],
+
+            #[cfg(emit_cfi)]
+            ".cfi_restore_state",
+
             in("a0") jp,
             in("a1") data,
             options(noreturn, nostack),

@@ -2,26 +2,9 @@
 #[repr(C, align(16))]
 pub(crate) struct Buf(pub [usize; 4]);
 
-// x18 is platform-reserved on darwin. Do not touch it at all.
-// See: <https://stackoverflow.com/questions/71152539/consequence-of-violating-macoss-arm64-calling-convention>
-#[cfg(target_os = "macos")]
-macro_rules! set_jump_raw_impl {
-    ($($tt:tt)*) => {
-        core::arch::asm!($($tt)*)
-    };
-}
-
-// On non-darwin platform, mark x18 clobbered.
-#[cfg(not(target_os = "macos"))]
-macro_rules! set_jump_raw_impl {
-    ($($tt:tt)*) => {
-        core::arch::asm!($($tt)* lateout("x18") _)
-    };
-}
-
 macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:expr, $lander:block) => {
-        set_jump_raw_impl!(
+    ($buf_ptr:expr, $func:path, $lander:block) => {
+        core::arch::asm!(
             "adr x1, {lander}",
             "mov x2, sp",
             "stp x2, x19, [x0]",
@@ -36,7 +19,13 @@ macro_rules! set_jump_raw {
             // lateout("sp") _, // sp
             lateout("x16") _,
             lateout("x17") _,
-            // lateout("x18") _, // See `set_jump_raw_impl`
+
+            // On non-darwin platform, mark x18 clobbered.
+            // It is platform-reserved on darwin: do not touch it at all.
+            // See: <https://stackoverflow.com/questions/71152539/consequence-of-violating-macoss-arm64-calling-convention>
+            #[cfg(not(target_os = "macos"))]
+            lateout("x18") _,
+
             // lateout("x19") _, // LLVM reserved.
             lateout("x20") _,
             lateout("x21") _,
@@ -58,17 +47,20 @@ macro_rules! set_jump_raw {
 #[inline]
 pub(crate) unsafe fn long_jump_raw(jp: *mut (), data: usize) -> ! {
     unsafe {
-        maybe_strip_cfi!(
-            (core::arch::asm!),
-            [".cfi_remember_state"],
-            [".cfi_undefined lr"],
+        core::arch::asm!(
+            #[cfg(emit_cfi)]
+            ".cfi_remember_state",
+            #[cfg(emit_cfi)]
+            ".cfi_undefined lr",
+
             "ldp x2, x19, [x1]",
             "ldp fp, lr, [x1, #16]",
             "mov sp, x2",
             "str x0, [x1]",
             "ret",
-            [".cfi_restore_state"],
-            [],
+
+            #[cfg(emit_cfi)]
+            ".cfi_restore_state",
 
             in("x0") data,
             in("x1") jp,

@@ -10,7 +10,7 @@ repository = "https://github.com/oxalica/sjlj2"
 license = "MIT OR Apache-2.0"
 exclude = ["flake.nix", "flake.lock"]
 # NB. Sync with CI!
-rust-version = "1.87" # asm_goto
+rust-version = "1.93" # asm_cfg
 
 [features]
 default = []
@@ -19,10 +19,10 @@ unwind = []
 [dependencies]
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.8"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-pprof = { version = "0.14.0", default-features = false }
+pprof = { version = "0.15.0", default-features = false }
 
 [[bench]]
 name = "bench"

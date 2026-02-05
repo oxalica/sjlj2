@@ -31,6 +31,8 @@ fn must_jump() {
 }
 
 #[test]
+// WAIT: <https://github.com/rust-lang/rust/issues/152079>
+#[expect(unused_assignments)]
 fn issue_2625() {
     #[inline(never)]
     fn foo() -> (usize, usize) {

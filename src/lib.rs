@@ -88,30 +88,6 @@ use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
 
-// Overridable by the next definition, and can be unused on some targets.
-#[allow(unused_macros)]
-macro_rules! maybe_strip_cfi {
-    (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
-        $($head)* (
-            $($lit1,)*
-            $($cfi, $($lit2,)*)*
-            $($tail)*
-        )
-    };
-}
-
-// Windows do not use DWARF unwind info.
-#[cfg(any(windows, panic = "abort"))]
-macro_rules! maybe_strip_cfi {
-    (($($head:tt)*), $($lit1:literal,)* $([$cfi:literal], $($lit2:literal,)*)* [], $($tail:tt)*) => {
-        $($head)* (
-            $($lit1,)*
-            $($($lit2,)*)*
-            $($tail)*
-        )
-    };
-}
-
 #[cfg(target_arch = "x86_64")]
 #[macro_use]
 #[path = "./x86_64.rs"]
@@ -323,7 +299,7 @@ where
     macro_rules! gen_wrap {
         ($abi:literal) => {
             unsafe extern $abi fn wrap<F: FnOnce(JumpPoint<'_>)>(data: &mut Data<F>) {
-                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV 1.87.
+                // Non-unwinding ABI generates abort-on-unwind guard since our MSRV >= 1.81.
                 // No need to handle unwinding here.
                 let jp = unsafe { JumpPoint::from_raw(data.jmp_buf.as_mut_ptr().cast()) };
                 unsafe { ManuallyDrop::take(&mut data.func)(jp) };

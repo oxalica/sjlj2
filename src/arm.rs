@@ -2,7 +2,7 @@
 pub(crate) struct Buf(pub [usize; 5]);
 
 macro_rules! set_jump_raw {
-    ($buf_ptr:expr, $func:expr, $lander:block) => {
+    ($buf_ptr:expr, $func:path, $lander:block) => {
         core::arch::asm!(
             "adr lr, {lander}",
             "stm r0, {{r0, r6, r11, sp, lr}}",
